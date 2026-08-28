@@ -254,9 +254,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET\n  status = CASE WHEN $2 = 'status' THEN $3 ELSE status END,\n  deal_value = CASE WHEN $2 = 'deal_value' THEN $3::numeric ELSE deal_value END,\n  won_at = CASE WHEN $2 = 'status' AND $3 = 'WON' THEN now() ELSE won_at END\nWHERE id = $1 AND updated_at = $4\nRETURNING *",
+        "query": "UPDATE leads SET\n  status = CASE WHEN $2 = 'status' THEN $3 ELSE status END,\n  deal_value = CASE WHEN $2 = 'deal_value' THEN $3::numeric ELSE deal_value END,\n  won_at = CASE WHEN $2 = 'status' AND $3 = 'WON' THEN now() ELSE won_at END\nWHERE id = $1\nRETURNING *",
         "options": {
-          "queryReplacement": "={{ [$json.leadId, $json.field, $json.newValue, $json.version] }}"
+          "queryReplacement": "={{ [$json.leadId, $json.field, $json.newValue] }}"
         }
       },
       "credentials": {

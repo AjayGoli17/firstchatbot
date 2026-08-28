@@ -459,9 +459,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET status = $2 WHERE id = $1 AND updated_at = $3 RETURNING *",
+        "query": "UPDATE leads SET status = $2 WHERE id = $1 RETURNING *",
         "options": {
-          "queryReplacement": "={{ [$json.leadId, $json.newStatus, $json.updatedAt] }}"
+          "queryReplacement": "={{ [$json.leadId, $json.newStatus] }}"
         }
       },
       "id": "3eb3b2fe-7f35-49a2-bb4e-bea481d8e42c",
@@ -627,9 +627,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET deal_value = $2 WHERE id = $1 AND updated_at = $3 RETURNING *",
+        "query": "UPDATE leads SET deal_value = $2 WHERE id = $1 RETURNING *",
         "options": {
-          "queryReplacement": "={{ [$json.leadId, $json.newValue, $json.updatedAt] }}"
+          "queryReplacement": "={{ [$json.leadId, $json.newValue] }}"
         }
       },
       "id": "436cc7ac-8354-4e99-8831-c547260d6526",
