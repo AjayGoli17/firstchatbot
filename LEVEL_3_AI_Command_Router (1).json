@@ -1,0 +1,550 @@
+{
+  "name": "LEVEL_3_AI_Command_Router",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "df2e3085-5005-43e6-9f5a-1366583a856d",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [1376, 1296],
+      "webhookId": "0ead7e3f-9429-4da1-9589-1f186595401b",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst cb = item.callback_query;\nconst msg = item.message;\n\nif (cb) {\n  return [{\n    json: {\n      isCallback: true,\n      chatId: cb.message.chat.id,\n      userId: cb.from.id,\n      messageId: cb.message.message_id,\n      callbackQueryId: cb.id,\n      callbackData: cb.data || '',\n      text: ''\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    isCallback: false,\n    chatId: msg ? msg.chat.id : null,\n    userId: msg ? msg.from.id : null,\n    messageId: msg ? msg.message_id : null,\n    callbackQueryId: null,\n    callbackData: '',\n    text: msg ? (msg.text || '') : ''\n  }\n}];"
+      },
+      "id": "9935c577-9e9f-48c4-84b7-9acb435501af",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 1296]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.isCallback}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bde691ad-e250-470f-86f4-d3006ce476f3",
+      "name": "Is Callback Query",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1824, 1296]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ $json.callbackData.startsWith('fu:') ? 0 : ($json.callbackData.startsWith('appr:') ? 1 : 2) }}"
+      },
+      "id": "1690f367-33a6-461c-b67e-166c022c9123",
+      "name": "Route Callback Prefix",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [2048, 1152]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "value": "LEVEL_7_Followup_Callback",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "chatId": "={{$json.chatId}}",
+            "callbackQueryId": "={{$json.callbackQueryId}}",
+            "callbackData": "={{$json.callbackData}}",
+            "messageId": "={{$json.messageId}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "9330e6d7-1345-449a-9692-7da818e4860f",
+      "name": "Execute Followup Callback",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2256, 1072]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "value": "LEVEL_10_Human_Approval",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "mode": "CALLBACK",
+            "chatId": "={{$json.chatId}}",
+            "callbackQueryId": "={{$json.callbackQueryId}}",
+            "callbackData": "={{$json.callbackData}}",
+            "messageId": "={{$json.messageId}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "ce6866f4-71fa-4473-a688-b8d405793bcb",
+      "name": "Execute Approval Callback",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2256, 1232]
+    },
+    {
+      "parameters": {},
+      "id": "e86837a3-4213-4121-b157-2e74dbfd6689",
+      "name": "Ignore Unknown Callback",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2256, 1360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const systemPrompt = `You are an intent-classification engine for a freelancer's personal operations assistant.\nYou ONLY interpret intent. You NEVER perform calculations, NEVER invent data, and NEVER modify anything.\n\nReturn ONLY a single JSON object, no prose, no markdown fences, matching exactly:\n{\"command\":\"<ONE_OF_ALLOWED_COMMANDS>\",\"confidence\":<0..1 number>,\"parameters\":{...}}\n\nAllowed commands:\nADD_LEAD, LIST_LEADS, GET_LEAD, UPDATE_LEAD, CHANGE_STATUS, UPDATE_DEAL_VALUE,\nRECORD_INTERACTION, ADD_NOTE, GET_LEAD_HISTORY,\nCREATE_FOLLOW_UP, COMPLETE_FOLLOW_UP,\nDAILY_PRIORITY, PIPELINE_ANALYTICS, REVENUE_ANALYTICS, LEAD_ANALYTICS,\nUNKNOWN\n\nParameter fields you may extract (omit any you cannot find in the message, never invent values):\nbusiness_name, contact_name, email, phone, service, status, deal_value, currency,\nnotes, interaction_type, content, follow_up_date, interval_days, report_type.\n\nRules:\n- If the message is ambiguous or missing information required to act, still return your best-guess command but set confidence below 0.6 and omit the missing fields.\n- Never fabricate a business_name, date, or amount that was not stated by the user.\n- If you cannot classify at all, return command \"UNKNOWN\".\n- Output raw JSON only.`;\n\nconst userText = $json.text;\n\nreturn [{\n  json: {\n    chatId: $json.chatId,\n    userId: $json.userId,\n    requestBody: {\n      temperature: 0,\n      systemPrompt,\n      userText\n    }\n  }\n}];"
+      },
+      "id": "bde453c6-328d-4b26-a258-1abfef16617a",
+      "name": "Build Gemini Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2048, 1456]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [ { text: $json.requestBody.systemPrompt } ] }, contents: [ { role: \"user\", parts: [ { text: $json.requestBody.userText } ] } ], generationConfig: { temperature: $json.requestBody.temperature, responseMimeType: \"application/json\" } }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "6c24ef72-f59a-43a7-ac6c-85542ed2dd96",
+      "name": "Gemini Command Router",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2256, 1456],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Gemini API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const REQUIRED = {\n  ADD_LEAD: ['business_name'],\n  LIST_LEADS: [],\n  GET_LEAD: ['business_name'],\n  UPDATE_LEAD: ['business_name'],\n  CHANGE_STATUS: ['business_name', 'status'],\n  UPDATE_DEAL_VALUE: ['business_name', 'deal_value'],\n  RECORD_INTERACTION: ['business_name'],\n  ADD_NOTE: ['business_name', 'notes'],\n  GET_LEAD_HISTORY: ['business_name'],\n  CREATE_FOLLOW_UP: ['business_name'],\n  COMPLETE_FOLLOW_UP: ['business_name'],\n  DAILY_PRIORITY: [],\n  PIPELINE_ANALYTICS: [],\n  REVENUE_ANALYTICS: [],\n  LEAD_ANALYTICS: [],\n  UNKNOWN: []\n};\nconst ALLOWED_STATUS = ['NEW','CONTACTED','REPLIED','QUALIFIED','PROPOSAL_SENT','NEGOTIATION','WON','LOST'];\n\nconst chatId = $('Build Gemini Request').first().json.chatId;\nconst userId = $('Build Gemini Request').first().json.userId;\n\nlet parsed = null;\ntry {\n  const raw = $input.first().json;\n  const candidate = raw.candidates && raw.candidates[0];\n  if (raw.error || !candidate || !candidate.content || !candidate.content.parts) throw new Error('gemini_error');\n  let text = candidate.content.parts.map(p => p.text || '').join('');\n  text = text.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();\n  parsed = JSON.parse(text);\n} catch (e) {\n  return [{ json: { chatId, userId, command: 'UNKNOWN', confidence: 0, parameters: {}, missing: [], systemError: true } }];\n}\n\nlet command = typeof parsed.command === 'string' ? parsed.command.toUpperCase().trim() : 'UNKNOWN';\nif (!(command in REQUIRED)) command = 'UNKNOWN';\nlet confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;\nlet parameters = (parsed.parameters && typeof parsed.parameters === 'object') ? parsed.parameters : {};\n\nif (parameters.status) {\n  parameters.status = String(parameters.status).toUpperCase().trim();\n  if (!ALLOWED_STATUS.includes(parameters.status)) {\n    parameters._invalidStatus = parameters.status;\n    delete parameters.status;\n  }\n}\nif (parameters.deal_value !== undefined) {\n  const v = Number(String(parameters.deal_value).toString().replace(/[^0-9.\\-]/g, ''));\n  parameters.deal_value = isNaN(v) ? undefined : v;\n}\n\nconst missing = (REQUIRED[command] || []).filter(f => parameters[f] === undefined || parameters[f] === null || parameters[f] === '');\n\nreturn [{\n  json: { chatId, userId, command, confidence, parameters, missing, systemError: false }\n}];"
+      },
+      "id": "1ed60df8-5be6-4d2a-a449-ec6d770466b6",
+      "name": "Parse and Validate AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2480, 1456]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.command}}",
+              "rightValue": "UNKNOWN",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{$json.missing.length}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "leftValue": "={{$json.confidence}}",
+              "rightValue": 0.6,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "3e8f8e9d-2b7f-4a7f-bdbd-821a84529daf",
+      "name": "Needs Clarification",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2704, 1456]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $json;\nlet text;\nif (j.systemError) {\n  text = \"\\u26a0\\ufe0f I couldn't reach the AI service. Please try again in a moment.\";\n} else if (j.command === 'UNKNOWN') {\n  text = \"\\ud83e\\udd14 I didn't understand that. Try something like:\\n\\u2022 \\\"Add ABC School as a \\u20b925,000 website lead\\\"\\n\\u2022 \\\"Show my active leads\\\"\\n\\u2022 \\\"Move ABC School to proposal\\\"\";\n} else if (j.missing && j.missing.length) {\n  text = `I can do that, but I still need: ${j.missing.join(', ')}. Could you send that?`;\n} else {\n  text = \"\\u26a0\\ufe0f I'm not confident I understood that correctly. Could you rephrase?\";\n}\nreturn [{ json: { chatId: j.chatId, text } }];"
+      },
+      "id": "9361f532-16b6-4208-b2bb-d64dddbe1c19",
+      "name": "Build Clarification Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2928, 1376]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{$json.chatId}}",
+        "text": "={{$json.text}}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "90a16563-8645-43e4-84c0-3a1c1e30ee6d",
+      "name": "Send Clarification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [3136, 1376],
+      "webhookId": "35f8c0e9-7ca7-4a81-87cb-94b79d03e423",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ ['ADD_LEAD','LIST_LEADS','GET_LEAD','UPDATE_LEAD','CHANGE_STATUS','UPDATE_DEAL_VALUE'].includes($json.command) ? 0 : (['RECORD_INTERACTION','ADD_NOTE','GET_LEAD_HISTORY'].includes($json.command) ? 1 : (['CREATE_FOLLOW_UP','COMPLETE_FOLLOW_UP'].includes($json.command) ? 2 : ($json.command === 'DAILY_PRIORITY' ? 3 : (['PIPELINE_ANALYTICS','REVENUE_ANALYTICS','LEAD_ANALYTICS'].includes($json.command) ? 4 : 5)))) }}"
+      },
+      "id": "28be2422-20a3-460d-aa3d-2c9180930970",
+      "name": "Route Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [2704, 1616]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "value": "LEVEL_4_Lead_Management",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "command": "={{$json.command}}",
+            "parameters": "={{$json.parameters}}",
+            "chatId": "={{$json.chatId}}",
+            "userId": "={{$json.userId}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "ff3fb1b4-7505-4792-bd31-986db097e434",
+      "name": "Execute Lead Management",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2928, 1520]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "value": "LEVEL_5_Interaction_History",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "command": "={{$json.command}}",
+            "parameters": "={{$json.parameters}}",
+            "chatId": "={{$json.chatId}}",
+            "userId": "={{$json.userId}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "cd9d7668-493a-49c1-b53c-cb0535a55e0f",
+      "name": "Execute Interaction History",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2928, 1600]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "value": "LEVEL_6_Followup_Management",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "command": "={{$json.command}}",
+            "parameters": "={{$json.parameters}}",
+            "chatId": "={{$json.chatId}}",
+            "userId": "={{$json.userId}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "95ee8a10-ff85-451f-9837-2530a695e988",
+      "name": "Execute Followup Management",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2928, 1680]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "value": "LEVEL_8_Daily_Priorities",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "mode": "ON_DEMAND",
+            "chatId": "={{$json.chatId}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "f4bd6598-901f-4413-ae67-dd67fd178eee",
+      "name": "Execute Daily Priorities",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2928, 1760]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "value": "LEVEL_9_Analytics",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "command": "={{$json.command}}",
+            "parameters": "={{$json.parameters}}",
+            "chatId": "={{$json.chatId}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "3915a6c4-a75f-4181-8b2d-4bb8f7808eb6",
+      "name": "Execute Analytics",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2928, 1840]
+    },
+    {
+      "parameters": {},
+      "id": "33e560ef-a3cf-495e-88fc-297445da9157",
+      "name": "Fallback Unknown",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2928, 1920]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{$json.chatId}}",
+        "text": "={{$json.text || 'Done.'}}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "9ebda722-4017-4048-8739-cad85ef9e2d6",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [3360, 1456],
+      "webhookId": "08f19a6b-0d8d-4792-a14c-06e3140e8c72",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.text}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "64e71a59-dd60-40a3-99d9-f012d87ae3cc",
+      "name": "Has Response Text",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3136, 1520]
+    },
+    {
+      "parameters": {},
+      "id": "f4fac007-d658-4492-b974-7c94a6580027",
+      "name": "Skip (Already Sent)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [3360, 1600]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [{ "node": "Extract Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Input": {
+      "main": [
+        [{ "node": "Is Callback Query", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Callback Query": {
+      "main": [
+        [{ "node": "Route Callback Prefix", "type": "main", "index": 0 }],
+        [{ "node": "Build Gemini Request", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route Callback Prefix": {
+      "main": [
+        [{ "node": "Execute Followup Callback", "type": "main", "index": 0 }],
+        [{ "node": "Execute Approval Callback", "type": "main", "index": 0 }],
+        [{ "node": "Ignore Unknown Callback", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Gemini Request": {
+      "main": [
+        [{ "node": "Gemini Command Router", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini Command Router": {
+      "main": [
+        [{ "node": "Parse and Validate AI Output", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse and Validate AI Output": {
+      "main": [
+        [{ "node": "Needs Clarification", "type": "main", "index": 0 }]
+      ]
+    },
+    "Needs Clarification": {
+      "main": [
+        [{ "node": "Build Clarification Message", "type": "main", "index": 0 }],
+        [{ "node": "Route Command", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Clarification Message": {
+      "main": [
+        [{ "node": "Send Clarification", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route Command": {
+      "main": [
+        [{ "node": "Execute Lead Management", "type": "main", "index": 0 }],
+        [{ "node": "Execute Interaction History", "type": "main", "index": 0 }],
+        [{ "node": "Execute Followup Management", "type": "main", "index": 0 }],
+        [{ "node": "Execute Daily Priorities", "type": "main", "index": 0 }],
+        [{ "node": "Execute Analytics", "type": "main", "index": 0 }],
+        [{ "node": "Fallback Unknown", "type": "main", "index": 0 }]
+      ]
+    },
+    "Execute Lead Management": {
+      "main": [
+        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Execute Interaction History": {
+      "main": [
+        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Execute Followup Management": {
+      "main": [
+        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Execute Daily Priorities": {
+      "main": [
+        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Execute Analytics": {
+      "main": [
+        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fallback Unknown": {
+      "main": [
+        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Response Text": {
+      "main": [
+        [{ "node": "Send Response", "type": "main", "index": 0 }],
+        [{ "node": "Skip (Already Sent)", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "091f8e1a-0137-4dd7-8c61-8e5f0ed06f4f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8852257cd4807b8e3530d3b8b9a55cf8b62cc80c6f5c0bdc1d3477ed1a56bc9f"
+  },
+  "nodeGroups": [],
+  "id": "SZZKaNga92A6HRcO",
+  "tags": []
+}

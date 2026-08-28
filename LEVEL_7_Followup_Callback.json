@@ -1,0 +1,456 @@
+{
+  "name": "LEVEL_7_Followup_Callback",
+  "nodes": [
+    {
+      "id": "trigger7b",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "parse_cb",
+      "name": "Parse Callback Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst parts = (j.callbackData || '').split(':'); // fu:<followupId>:<leadId>:<Y|N>\nreturn [{ json: { followupId: Number(parts[1]), leadId: Number(parts[2]), answer: parts[3],\n  chatId: j.chatId, callbackQueryId: j.callbackQueryId, messageId: j.messageId } }];"
+      }
+    },
+    {
+      "id": "verify_pending",
+      "name": "Verify Followup Still Pending",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT f.id, f.status, f.attempt_number, l.business_name FROM follow_ups f JOIN leads l ON l.id = f.lead_id WHERE f.id = $1 AND f.lead_id = $2",
+        "options": {
+          "queryReplacement": "={{ [$json.followupId, $json.leadId] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_still_pending",
+      "name": "Still Pending",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.status}}",
+              "rightValue": "PENDING",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "already_handled",
+      "name": "Already Handled Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        120
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const p = $('Parse Callback Data').first().json;\nreturn [{ json: { chatId: p.chatId, callbackQueryId: p.callbackQueryId, messageId: p.messageId,\n  text: '\\u2139\\ufe0f This reminder was already handled.', answered: true } }];"
+      }
+    },
+    {
+      "id": "if_answer_yes",
+      "name": "Answer Is Yes",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        -60
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$('Parse Callback Data').first().json.answer}}",
+              "rightValue": "Y",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "mark_completed",
+      "name": "Mark Completed And Update Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1100,
+        -120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upd AS (UPDATE follow_ups SET status = 'COMPLETED', completed_at = now() WHERE id = $1 AND status = 'PENDING' RETURNING lead_id) UPDATE leads SET status = 'REPLIED', last_contact_at = now(), next_follow_up_at = NULL WHERE id = (SELECT lead_id FROM upd) RETURNING business_name",
+        "options": {
+          "queryReplacement": "={{ [$('Parse Callback Data').first().json.followupId] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "yes_confirm",
+      "name": "Build Yes Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -120
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const p = $('Parse Callback Data').first().json;\nconst lead = $('Verify Followup Still Pending').first().json;\nreturn [{ json: { chatId: p.chatId, callbackQueryId: p.callbackQueryId, messageId: p.messageId,\n  text: `\\ud83c\\udf89 Great \u2014 marked <b>${lead.business_name}</b> as REPLIED. No further reminder scheduled.`, answered: true } }];"
+      }
+    },
+    {
+      "id": "create_next_followup",
+      "name": "Create Next Followup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1100,
+        60
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH cancelled AS (UPDATE follow_ups SET status = 'CANCELLED' WHERE id = $1 RETURNING lead_id) INSERT INTO follow_ups (lead_id, due_at, attempt_number, status) SELECT $2, now() + interval '3 days', $3, 'PENDING' FROM cancelled RETURNING due_at",
+        "options": {
+          "queryReplacement": "={{ [$('Parse Callback Data').first().json.followupId, $('Parse Callback Data').first().json.leadId, ($('Verify Followup Still Pending').first().json.attempt_number || 1) + 1] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "sync_lead_next",
+      "name": "Sync Lead Next Follow Up",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1320,
+        60
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET next_follow_up_at = $2 WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ [$('Parse Callback Data').first().json.leadId, $('Create Next Followup').first().json.due_at] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "no_confirm",
+      "name": "Build No Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        60
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const p = $('Parse Callback Data').first().json;\nconst lead = $('Verify Followup Still Pending').first().json;\nconst next = $('Create Next Followup').first().json.due_at;\nreturn [{ json: { chatId: p.chatId, callbackQueryId: p.callbackQueryId, messageId: p.messageId,\n  text: `\\ud83d\\udd01 Got it. Next reminder for <b>${lead.business_name}</b> set for ${new Date(next).toDateString()}.`, answered: true } }];"
+      }
+    },
+    {
+      "id": "merge_out",
+      "name": "Merge Outcome",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1780,
+        -20
+      ],
+      "parameters": {
+        "mode": "chooseBranchesMerge",
+        "numberInputs": 3
+      }
+    },
+    {
+      "id": "answer_cb",
+      "name": "Answer Callback Query",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1980,
+        -20
+      ],
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{$json.callbackQueryId}}",
+        "text": "="
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "edit_msg",
+      "name": "Edit Reminder Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2200,
+        -20
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "editMessageText",
+        "chatId": "={{$json.chatId}}",
+        "messageId": "={{$json.messageId}}",
+        "text": "={{$json.text}}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Callback Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Callback Data": {
+      "main": [
+        [
+          {
+            "node": "Verify Followup Still Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Followup Still Pending": {
+      "main": [
+        [
+          {
+            "node": "Still Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still Pending": {
+      "main": [
+        [
+          {
+            "node": "Answer Is Yes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already Handled Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Handled Message": {
+      "main": [
+        [
+          {
+            "node": "Merge Outcome",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Answer Is Yes": {
+      "main": [
+        [
+          {
+            "node": "Mark Completed And Update Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Next Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Completed And Update Lead": {
+      "main": [
+        [
+          {
+            "node": "Build Yes Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Yes Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Merge Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Next Followup": {
+      "main": [
+        [
+          {
+            "node": "Sync Lead Next Follow Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Lead Next Follow Up": {
+      "main": [
+        [
+          {
+            "node": "Build No Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build No Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Merge Outcome",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Outcome": {
+      "main": [
+        [
+          {
+            "node": "Answer Callback Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Callback Query": {
+      "main": [
+        [
+          {
+            "node": "Edit Reminder Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "freelance-ops-v1"
+  }
+}

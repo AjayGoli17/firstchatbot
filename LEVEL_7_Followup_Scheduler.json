@@ -1,0 +1,226 @@
+{
+  "name": "LEVEL_7_Followup_Scheduler",
+  "nodes": [
+    {
+      "id": "schedule_trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get_due",
+      "name": "Get Due Followups",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT f.id AS followup_id, f.lead_id, f.attempt_number, l.business_name FROM follow_ups f JOIN leads l ON l.id = f.lead_id WHERE f.status = 'PENDING' AND f.due_at <= now()",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_any_due",
+      "name": "Any Due",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.followup_id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "build_reminder",
+      "name": "Build Reminder Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -60
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nreturn [{ json: {\n  followupId: j.followup_id,\n  leadId: j.lead_id,\n  businessName: j.business_name,\n  callbackYes: `fu:${j.followup_id}:${j.lead_id}:Y`,\n  callbackNo: `fu:${j.followup_id}:${j.lead_id}:N`\n} }];"
+      }
+    },
+    {
+      "id": "send_reminder",
+      "name": "Send Reminder",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        -60
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $env.PERSONAL_CHAT_ID }}",
+        "text": "=\ud83d\udd14 <b>FOLLOW-UP DUE</b>\n\n{{$json.businessName}}\n\nDid they reply?",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        },
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "\u2705 YES",
+                    "additionalFields": {
+                      "callback_data": "={{$json.callbackYes}}"
+                    }
+                  },
+                  {
+                    "text": "\u274c NO",
+                    "additionalFields": {
+                      "callback_data": "={{$json.callbackNo}}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "snooze",
+      "name": "Snooze To Avoid Duplicate Send",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1100,
+        -60
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE follow_ups SET due_at = now() + interval '12 hours' WHERE id = $1 AND status = 'PENDING'",
+        "options": {
+          "queryReplacement": "={{ [$('Build Reminder Payload').first().json.followupId] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Due Followups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Due Followups": {
+      "main": [
+        [
+          {
+            "node": "Any Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Due": {
+      "main": [
+        [
+          {
+            "node": "Build Reminder Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Reminder Payload": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder": {
+      "main": [
+        [
+          {
+            "node": "Snooze To Avoid Duplicate Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "freelance-ops-v1"
+  }
+}

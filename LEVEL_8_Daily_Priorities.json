@@ -1,0 +1,236 @@
+{
+  "name": "LEVEL_8_Daily_Priorities",
+  "nodes": [
+    {
+      "id": "morning_trigger",
+      "name": "Morning Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -100
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demand_trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        100
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "resolve_chat_morning",
+      "name": "Resolve Chat Id (Morning)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        -100
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "return [{ json: { chatId: $env.PERSONAL_CHAT_ID } }];"
+      }
+    },
+    {
+      "id": "resolve_chat_demand",
+      "name": "Resolve Chat Id (On Demand)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "return [{ json: { chatId: $json.chatId } }];"
+      }
+    },
+    {
+      "id": "query_priorities",
+      "name": "Query Priorities",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT l.id, l.business_name, l.status, l.deal_value, l.next_follow_up_at,\nCASE WHEN l.next_follow_up_at IS NOT NULL AND l.next_follow_up_at < now() THEN 'OVERDUE'\n     WHEN l.next_follow_up_at IS NOT NULL AND l.next_follow_up_at::date = now()::date THEN 'DUE_TODAY'\n     WHEN l.status = 'PROPOSAL_SENT' THEN 'PROPOSAL_PENDING'\n     WHEN l.status = 'QUALIFIED' THEN 'QUALIFIED'\n     ELSE 'OTHER' END AS priority_bucket\nFROM leads l\nWHERE l.status NOT IN ('WON','LOST')\n  AND (\n    (l.next_follow_up_at IS NOT NULL AND l.next_follow_up_at <= now() + interval '1 day')\n    OR l.status IN ('PROPOSAL_SENT','QUALIFIED')\n  )\nORDER BY priority_bucket, l.next_follow_up_at NULLS LAST",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "pipeline_total",
+      "name": "Pipeline Total",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COALESCE(SUM(deal_value),0) AS total, currency FROM leads WHERE status NOT IN ('WON','LOST') GROUP BY currency",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "format_priorities",
+      "name": "Format Daily Priorities",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const rows = $('Query Priorities').all().filter(i => i.json.business_name);\nconst totals = $('Pipeline Total').all().map(i => i.json).filter(t => t.total !== undefined);\n\n// Only one of these two resolver nodes actually runs per execution (schedule vs on-demand).\n// Referencing a node that didn't run in this execution throws, so guard each lookup.\nfunction chatIdFrom(nodeName) {\n  try {\n    const item = $(nodeName).first();\n    return item ? item.json.chatId : undefined;\n  } catch (e) {\n    return undefined;\n  }\n}\nconst chatId = chatIdFrom('Resolve Chat Id (Morning)') || chatIdFrom('Resolve Chat Id (On Demand)');\n\nconst icon = b => b === 'OVERDUE' ? '\\ud83d\\udd34' : b === 'DUE_TODAY' ? '\\ud83d\\udfe0' : b === 'PROPOSAL_PENDING' ? '\\ud83d\\udfe1' : '\\ud83d\\udfe2';\nconst label = (r) => {\n  if (r.priority_bucket === 'OVERDUE') return 'Follow-up overdue';\n  if (r.priority_bucket === 'DUE_TODAY') return 'Follow-up due today';\n  if (r.priority_bucket === 'PROPOSAL_PENDING') return 'Proposal pending';\n  if (r.priority_bucket === 'QUALIFIED') return 'Qualified \u2014 needs next step';\n  return 'Active';\n};\n\nconst seen = new Set();\nconst lines = [];\nfor (const item of rows) {\n  const r = item.json;\n  if (seen.has(r.id)) continue;\n  seen.add(r.id);\n  lines.push(`${icon(r.priority_bucket)} ${r.business_name} \u2014 ${label(r)}`);\n}\n\nconst pipelineLines = totals.length\n  ? totals.map(t => `\\ud83d\\udcb0 Pipeline: ${t.currency} ${Number(t.total).toLocaleString('en-IN')}`).join('\\n')\n  : '\\ud83d\\udcb0 Pipeline: 0';\n\nconst body = lines.length ? lines.join('\\n') : 'Nothing urgent today \\ud83c\\udf89';\n\nreturn [{ json: { chatId,\n  text: `\\u2600\\ufe0f <b>TODAY'S PRIORITIES</b>\\n\\n${body}\\n\\n${pipelineLines}` } }];"
+      }
+    },
+    {
+      "id": "send_priorities",
+      "name": "Send Priorities",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{$json.chatId}}",
+        "text": "={{$json.text}}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Morning Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Resolve Chat Id (Morning)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Resolve Chat Id (On Demand)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Chat Id (Morning)": {
+      "main": [
+        [
+          {
+            "node": "Query Priorities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Chat Id (On Demand)": {
+      "main": [
+        [
+          {
+            "node": "Query Priorities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Priorities": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Total",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Total": {
+      "main": [
+        [
+          {
+            "node": "Format Daily Priorities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Daily Priorities": {
+      "main": [
+        [
+          {
+            "node": "Send Priorities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "freelance-ops-v1"
+  }
+}

@@ -1,0 +1,220 @@
+{
+  "name": "LEVEL_9_Analytics",
+  "nodes": [
+    {
+      "id": "trigger9",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        150
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "route9",
+      "name": "Route Report Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        220,
+        150
+      ],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ ['PIPELINE_ANALYTICS','REVENUE_ANALYTICS','LEAD_ANALYTICS'].indexOf($json.command) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "pipeline_q",
+      "name": "Pipeline Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT status, COUNT(*) AS cnt, COALESCE(SUM(deal_value),0) AS value FROM leads WHERE status NOT IN ('WON','LOST') GROUP BY status ORDER BY status",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "pipeline_fmt",
+      "name": "Format Pipeline Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst trig = $('Execute Workflow Trigger').first().json;\nconst lines = rows.filter(r => r.status).map(r => `\\u2022 ${r.status}: ${r.cnt} lead(s) \u2014 \\u20b9${Number(r.value).toLocaleString('en-IN')}`);\nconst total = rows.reduce((s,r) => s + Number(r.value || 0), 0);\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udcca <b>Pipeline</b>\\n${lines.join('\\n') || 'No active leads.'}\\n\\nTotal active pipeline: \\u20b9${total.toLocaleString('en-IN')}` } }];"
+      }
+    },
+    {
+      "id": "revenue_q",
+      "name": "Revenue Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        150
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS won_count, COALESCE(SUM(deal_value),0) AS won_value FROM leads WHERE status = 'WON' AND won_at >= date_trunc('month', now())",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "revenue_fmt",
+      "name": "Format Revenue Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        150
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const r = $input.first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udcb0 <b>Revenue \u2014 This Month</b>\\nDeals won: ${r.won_count}\\nRevenue: \\u20b9${Number(r.won_value).toLocaleString('en-IN')}` } }];"
+      }
+    },
+    {
+      "id": "lead_q",
+      "name": "Lead Analytics Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE status = 'WON') AS won, COUNT(*) FILTER (WHERE status = 'LOST') AS lost, COUNT(*) FILTER (WHERE status NOT IN ('WON','LOST')) AS active FROM leads",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "lead_fmt",
+      "name": "Format Lead Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const r = $input.first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst winRate = (Number(r.won) + Number(r.lost)) > 0 ? ((Number(r.won) / (Number(r.won) + Number(r.lost))) * 100).toFixed(1) : '0.0';\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udc65 <b>Lead Stats</b>\\nTotal leads: ${r.total}\\nActive: ${r.active}\\nWon: ${r.won}\\nLost: ${r.lost}\\nWin rate: ${winRate}%` } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Route Report Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Report Type": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Revenue Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Analytics Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Query": {
+      "main": [
+        [
+          {
+            "node": "Format Pipeline Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revenue Query": {
+      "main": [
+        [
+          {
+            "node": "Format Revenue Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Analytics Query": {
+      "main": [
+        [
+          {
+            "node": "Format Lead Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "freelance-ops-v1"
+  }
+}

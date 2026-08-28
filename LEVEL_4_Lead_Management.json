@@ -1,0 +1,1037 @@
+{
+  "name": "LEVEL_4_Lead_Management",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "route",
+      "name": "Route Lead Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ ['ADD_LEAD','LIST_LEADS','GET_LEAD','UPDATE_LEAD','CHANGE_STATUS','UPDATE_DEAL_VALUE'].indexOf($json.command) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "check_dup",
+      "name": "Check Duplicate Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        -260
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, business_name FROM leads WHERE LOWER(business_name) = LOWER($1) LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.parameters.business_name] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_dup",
+      "name": "Duplicate Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        -260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "dup_msg",
+      "name": "Build Duplicate Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        -320
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "return [{ json: { chatId: $('Execute Workflow Trigger').first().json.chatId,\n  text: `\\u26a0\\ufe0f A lead named \"${$json.business_name}\" already exists. Use an update command instead of adding it again.` } }];"
+      }
+    },
+    {
+      "id": "insert_lead",
+      "name": "Insert Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        900,
+        -200
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO leads (business_name, contact_name, email, phone, service, status, deal_value, currency) VALUES ($1,$2,$3,$4,$5,'NEW',$6,$7) RETURNING *",
+        "options": {
+          "queryReplacement": "={{ [$('Execute Workflow Trigger').first().json.parameters.business_name, $('Execute Workflow Trigger').first().json.parameters.contact_name || null, $('Execute Workflow Trigger').first().json.parameters.email || null, $('Execute Workflow Trigger').first().json.parameters.phone || null, $('Execute Workflow Trigger').first().json.parameters.service || null, $('Execute Workflow Trigger').first().json.parameters.deal_value || 0, $('Execute Workflow Trigger').first().json.parameters.currency || 'INR'] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "add_confirm",
+      "name": "Build Add Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -200
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst val = j.deal_value ? `\\u20b9${Number(j.deal_value).toLocaleString('en-IN')}` : 'not set';\nreturn [{ json: { chatId: trig.chatId,\n  text: `\\u2705 Lead added: <b>${j.business_name}</b>\\nService: ${j.service || '\\u2014'}\\nValue: ${val}\\nStatus: ${j.status}` } }];"
+      }
+    },
+    {
+      "id": "list_leads",
+      "name": "List Leads",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        -80
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT business_name, status, deal_value, currency, next_follow_up_at FROM leads WHERE status NOT IN ('WON','LOST') ORDER BY updated_at DESC LIMIT 25",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "format_list",
+      "name": "Format List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        -80
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst trig = $('Execute Workflow Trigger').first().json;\nif (!items.length || !items[0].json.business_name) {\n  return [{ json: { chatId: trig.chatId, text: 'No active leads yet.' } }];\n}\nconst lines = items.map(i => {\n  const d = i.json;\n  const val = d.deal_value ? `\\u20b9${Number(d.deal_value).toLocaleString('en-IN')}` : '\\u2014';\n  return `\\u2022 ${d.business_name} \u2014 ${d.status} \u2014 ${val}`;\n});\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udccb <b>Active Leads</b>\\n${lines.join('\\n')}` } }];"
+      }
+    },
+    {
+      "id": "find_get",
+      "name": "Find Lead By Name",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        60
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM leads WHERE LOWER(business_name) = LOWER($1) LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.parameters.business_name] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_get_found",
+      "name": "Lead Found (Get)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        60
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "get_detail",
+      "name": "Format Lead Detail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        20
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst val = j.deal_value ? `\\u20b9${Number(j.deal_value).toLocaleString('en-IN')}` : '\\u2014';\nconst lastContact = j.last_contact_at ? new Date(j.last_contact_at).toDateString() : 'never';\nconst nextFollow = j.next_follow_up_at ? new Date(j.next_follow_up_at).toDateString() : 'none scheduled';\nreturn [{ json: { chatId: trig.chatId,\n  text: `\\ud83d\\udcc7 <b>${j.business_name}</b>\\nContact: ${j.contact_name || '\\u2014'}\\nEmail: ${j.email || '\\u2014'}\\nPhone: ${j.phone || '\\u2014'}\\nService: ${j.service || '\\u2014'}\\nStatus: ${j.status}\\nValue: ${val}\\nLast contact: ${lastContact}\\nNext follow-up: ${nextFollow}\\nNotes: ${j.notes || '\\u2014'}` } }];"
+      }
+    },
+    {
+      "id": "get_not_found",
+      "name": "Lead Not Found (Get)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        120
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\u26a0\\ufe0f I couldn't find a lead called \"${trig.parameters.business_name}\".` } }];"
+      }
+    },
+    {
+      "id": "find_upd",
+      "name": "Find Lead For Update",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        220
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM leads WHERE LOWER(business_name) = LOWER($1) LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.parameters.business_name] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_upd_found",
+      "name": "Lead Found (Update)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "do_update",
+      "name": "Update Lead Fields",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        900,
+        180
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET contact_name = COALESCE($2, contact_name), email = COALESCE($3, email), phone = COALESCE($4, phone), service = COALESCE($5, service), notes = COALESCE($6, notes) WHERE id = $1 RETURNING *",
+        "options": {
+          "queryReplacement": "={{ [$json.id, $('Execute Workflow Trigger').first().json.parameters.contact_name || null, $('Execute Workflow Trigger').first().json.parameters.email || null, $('Execute Workflow Trigger').first().json.parameters.phone || null, $('Execute Workflow Trigger').first().json.parameters.service || null, $('Execute Workflow Trigger').first().json.parameters.notes || null] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "upd_confirm",
+      "name": "Build Update Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        180
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\u2705 Updated <b>${j.business_name}</b>.` } }];"
+      }
+    },
+    {
+      "id": "upd_not_found",
+      "name": "Lead Not Found (Update)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        280
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\u26a0\\ufe0f I couldn't find a lead called \"${trig.parameters.business_name}\".` } }];"
+      }
+    },
+    {
+      "id": "find_status",
+      "name": "Find Lead For Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, business_name, status, updated_at FROM leads WHERE LOWER(business_name) = LOWER($1) LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.parameters.business_name] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_status_found",
+      "name": "Lead Found (Status)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "check_status_approval",
+      "name": "Check Needs Approval (Status)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        360
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst newStatus = trig.parameters.status;\nconst needsApproval = ['WON','LOST'].includes(newStatus);\nreturn [{ json: { leadId: j.id, businessName: j.business_name, oldStatus: j.status, newStatus,\n  updatedAt: j.updated_at, chatId: trig.chatId, needsApproval } }];"
+      }
+    },
+    {
+      "id": "if_status_needs_approval",
+      "name": "Status Needs Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.needsApproval}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "exec_approval_status",
+      "name": "Request Approval (Status)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "value": "LEVEL_10_Human_Approval",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "mode": "REQUEST",
+            "leadId": "={{$json.leadId}}",
+            "businessName": "={{$json.businessName}}",
+            "field": "status",
+            "oldValue": "={{$json.oldStatus}}",
+            "newValue": "={{$json.newStatus}}",
+            "recordVersion": "={{$json.updatedAt}}",
+            "chatId": "={{$json.chatId}}"
+          }
+        }
+      }
+    },
+    {
+      "id": "direct_status_update",
+      "name": "Update Status Direct",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1340,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET status = $2 WHERE id = $1 AND updated_at = $3 RETURNING *",
+        "options": {
+          "queryReplacement": "={{ [$json.leadId, $json.newStatus, $json.updatedAt] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "status_confirm",
+      "name": "Status Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        420
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nif (!j.id) {\n  return [{ json: { chatId: $('Check Needs Approval (Status)').first().json.chatId,\n    text: `\\u26a0\\ufe0f Couldn't update status \u2014 the record changed since I read it. Please retry.` } }];\n}\nreturn [{ json: { chatId: $('Check Needs Approval (Status)').first().json.chatId,\n  text: `\\u2705 <b>${j.business_name}</b> moved to ${j.status}.` } }];"
+      }
+    },
+    {
+      "id": "status_not_found",
+      "name": "Lead Not Found (Status)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        480
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\u26a0\\ufe0f I couldn't find a lead called \"${trig.parameters.business_name}\".` } }];"
+      }
+    },
+    {
+      "id": "find_value",
+      "name": "Find Lead For Value",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        580
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, business_name, deal_value, updated_at FROM leads WHERE LOWER(business_name) = LOWER($1) LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.parameters.business_name] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_value_found",
+      "name": "Lead Found (Value)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        580
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "check_value_approval",
+      "name": "Check Needs Approval (Value)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        560
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst oldVal = Number(j.deal_value) || 0;\nconst newVal = Number(trig.parameters.deal_value) || 0;\nconst pctChange = oldVal === 0 ? 100 : Math.abs((newVal - oldVal) / oldVal) * 100;\nconst needsApproval = pctChange > 30;\nreturn [{ json: { leadId: j.id, businessName: j.business_name, oldValue: oldVal, newValue: newVal,\n  updatedAt: j.updated_at, chatId: trig.chatId, needsApproval } }];"
+      }
+    },
+    {
+      "id": "if_value_needs_approval",
+      "name": "Value Needs Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        560
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.needsApproval}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "exec_approval_value",
+      "name": "Request Approval (Value)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        520
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "value": "LEVEL_10_Human_Approval",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "value": {
+            "mode": "REQUEST",
+            "leadId": "={{$json.leadId}}",
+            "businessName": "={{$json.businessName}}",
+            "field": "deal_value",
+            "oldValue": "={{$json.oldValue}}",
+            "newValue": "={{$json.newValue}}",
+            "recordVersion": "={{$json.updatedAt}}",
+            "chatId": "={{$json.chatId}}"
+          }
+        }
+      }
+    },
+    {
+      "id": "direct_value_update",
+      "name": "Update Value Direct",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1340,
+        640
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET deal_value = $2 WHERE id = $1 AND updated_at = $3 RETURNING *",
+        "options": {
+          "queryReplacement": "={{ [$json.leadId, $json.newValue, $json.updatedAt] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "value_confirm",
+      "name": "Value Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        640
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst src = $('Check Needs Approval (Value)').first().json;\nif (!j.id) {\n  return [{ json: { chatId: src.chatId, text: `\\u26a0\\ufe0f Couldn't update value \u2014 the record changed since I read it. Please retry.` } }];\n}\nreturn [{ json: { chatId: src.chatId, text: `\\u2705 <b>${j.business_name}</b> value updated to \\u20b9${Number(j.deal_value).toLocaleString('en-IN')}.` } }];"
+      }
+    },
+    {
+      "id": "value_not_found",
+      "name": "Lead Not Found (Value)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        700
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\u26a0\\ufe0f I couldn't find a lead called \"${trig.parameters.business_name}\".` } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Route Lead Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Lead Command": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "List Leads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Lead By Name",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Lead For Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Lead For Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Lead For Value",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate Lead": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Exists": {
+      "main": [
+        [
+          {
+            "node": "Build Duplicate Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Lead": {
+      "main": [
+        [
+          {
+            "node": "Build Add Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Leads": {
+      "main": [
+        [
+          {
+            "node": "Format List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead By Name": {
+      "main": [
+        [
+          {
+            "node": "Lead Found (Get)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Found (Get)": {
+      "main": [
+        [
+          {
+            "node": "Format Lead Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Not Found (Get)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead For Update": {
+      "main": [
+        [
+          {
+            "node": "Lead Found (Update)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Found (Update)": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Not Found (Update)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead Fields": {
+      "main": [
+        [
+          {
+            "node": "Build Update Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead For Status": {
+      "main": [
+        [
+          {
+            "node": "Lead Found (Status)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Found (Status)": {
+      "main": [
+        [
+          {
+            "node": "Check Needs Approval (Status)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Not Found (Status)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Needs Approval (Status)": {
+      "main": [
+        [
+          {
+            "node": "Status Needs Approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Needs Approval?": {
+      "main": [
+        [
+          {
+            "node": "Request Approval (Status)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Status Direct",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status Direct": {
+      "main": [
+        [
+          {
+            "node": "Status Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead For Value": {
+      "main": [
+        [
+          {
+            "node": "Lead Found (Value)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Found (Value)": {
+      "main": [
+        [
+          {
+            "node": "Check Needs Approval (Value)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Not Found (Value)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Needs Approval (Value)": {
+      "main": [
+        [
+          {
+            "node": "Value Needs Approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Value Needs Approval?": {
+      "main": [
+        [
+          {
+            "node": "Request Approval (Value)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Value Direct",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Value Direct": {
+      "main": [
+        [
+          {
+            "node": "Value Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "freelance-ops-v1"
+  }
+}

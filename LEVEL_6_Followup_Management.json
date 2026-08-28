@@ -1,0 +1,454 @@
+{
+  "name": "LEVEL_6_Followup_Management",
+  "nodes": [
+    {
+      "id": "trigger6",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "find_lead6",
+      "name": "Find Lead By Name",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, business_name FROM leads WHERE LOWER(business_name) = LOWER($1) LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.parameters.business_name] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_lead6",
+      "name": "Lead Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "not_found6",
+      "name": "Lead Not Found",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        320
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\u26a0\\ufe0f I couldn't find a lead called \"${trig.parameters.business_name}\".` } }];"
+      }
+    },
+    {
+      "id": "route6",
+      "name": "Route Followup Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        660,
+        140
+      ],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ ['CREATE_FOLLOW_UP','COMPLETE_FOLLOW_UP'].indexOf($('Execute Workflow Trigger').first().json.command) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "compute_due",
+      "name": "Compute Due Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        -40
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nconst p = trig.parameters || {};\nlet dueAt;\nif (p.follow_up_date) {\n  const d = new Date(p.follow_up_date);\n  dueAt = isNaN(d.getTime()) ? null : d.toISOString();\n}\nif (!dueAt) {\n  const days = Number(p.interval_days) > 0 ? Number(p.interval_days) : 3;\n  dueAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();\n}\nreturn [{ json: { leadId: $json.id, businessName: $json.business_name, dueAt, chatId: trig.chatId } }];"
+      }
+    },
+    {
+      "id": "upsert_manual_followup",
+      "name": "Upsert Followup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1120,
+        -40
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO follow_ups (lead_id, due_at, attempt_number, status) VALUES ($1,$2,1,'PENDING') ON CONFLICT (lead_id) WHERE status = 'PENDING' DO UPDATE SET due_at = EXCLUDED.due_at RETURNING *",
+        "options": {
+          "queryReplacement": "={{ [$json.leadId, $json.dueAt] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "sync_lead_followup",
+      "name": "Sync Lead Next Follow Up",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1340,
+        -40
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET next_follow_up_at = $2 WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ [$('Compute Due Date').first().json.leadId, $('Compute Due Date').first().json.dueAt] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "create_confirm",
+      "name": "Build Create Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        -40
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const c = $('Compute Due Date').first().json;\nreturn [{ json: { chatId: c.chatId, text: `\\u2705 Follow-up for <b>${c.businessName}</b> set for ${new Date(c.dueAt).toDateString()}.` } }];"
+      }
+    },
+    {
+      "id": "find_pending",
+      "name": "Find Pending Followup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        900,
+        220
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM follow_ups WHERE lead_id = $1 AND status = 'PENDING' ORDER BY due_at LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.id] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_pending_found",
+      "name": "Pending Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "complete_followup",
+      "name": "Complete Followup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1340,
+        180
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE follow_ups SET status = 'COMPLETED', completed_at = now() WHERE id = $1 RETURNING *",
+        "options": {
+          "queryReplacement": "={{ [$json.id] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "clear_lead_followup",
+      "name": "Clear Lead Next Follow Up",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1560,
+        180
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET next_follow_up_at = NULL, status = CASE WHEN status IN ('NEW','CONTACTED') THEN 'REPLIED' ELSE status END WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ [$('Find Lead By Name').first().json.id] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "complete_confirm",
+      "name": "Build Complete Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        180
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const lead = $('Find Lead By Name').first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\u2705 Follow-up for <b>${lead.business_name}</b> marked complete.` } }];"
+      }
+    },
+    {
+      "id": "no_pending",
+      "name": "No Pending Followup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        320
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const lead = $('Find Lead By Name').first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `${lead.business_name} has no pending follow-up.` } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Find Lead By Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead By Name": {
+      "main": [
+        [
+          {
+            "node": "Lead Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Found": {
+      "main": [
+        [
+          {
+            "node": "Route Followup Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Followup Command": {
+      "main": [
+        [
+          {
+            "node": "Compute Due Date",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Pending Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Due Date": {
+      "main": [
+        [
+          {
+            "node": "Upsert Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Followup": {
+      "main": [
+        [
+          {
+            "node": "Sync Lead Next Follow Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Lead Next Follow Up": {
+      "main": [
+        [
+          {
+            "node": "Build Create Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Pending Followup": {
+      "main": [
+        [
+          {
+            "node": "Pending Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pending Found": {
+      "main": [
+        [
+          {
+            "node": "Complete Followup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Pending Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Followup": {
+      "main": [
+        [
+          {
+            "node": "Clear Lead Next Follow Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Lead Next Follow Up": {
+      "main": [
+        [
+          {
+            "node": "Build Complete Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "freelance-ops-v1"
+  }
+}
