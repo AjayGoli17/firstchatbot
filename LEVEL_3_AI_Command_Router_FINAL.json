@@ -13,7 +13,10 @@
       "name": "Telegram Trigger",
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.1,
-      "position": [1376, 1296],
+      "position": [
+        1376,
+        1296
+      ],
       "webhookId": "0ead7e3f-9429-4da1-9589-1f186595401b",
       "credentials": {
         "telegramApi": {
@@ -30,7 +33,10 @@
       "name": "Extract Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1600, 1296]
+      "position": [
+        1600,
+        1296
+      ]
     },
     {
       "parameters": {
@@ -59,18 +65,25 @@
       "name": "Is Callback Query",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1824, 1296]
+      "position": [
+        1824,
+        1296
+      ]
     },
     {
       "parameters": {
         "mode": "expression",
-        "output": "={{ $json.callbackData.startsWith('fu:') ? 0 : ($json.callbackData.startsWith('appr:') ? 1 : 2) }}"
+        "output": "={{ $json.callbackData.startsWith('fu:') ? 0 : ($json.callbackData.startsWith('appr:') ? 1 : 2) }}",
+        "numberOutputs": 3
       },
       "id": "1690f367-33a6-461c-b67e-166c022c9123",
       "name": "Route Callback Prefix",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
-      "position": [2048, 1152]
+      "position": [
+        2048,
+        1152
+      ]
     },
     {
       "parameters": {
@@ -92,7 +105,10 @@
       "name": "Execute Followup Callback",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [2256, 1072]
+      "position": [
+        2256,
+        1072
+      ]
     },
     {
       "parameters": {
@@ -115,7 +131,10 @@
       "name": "Execute Approval Callback",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [2256, 1232]
+      "position": [
+        2256,
+        1232
+      ]
     },
     {
       "parameters": {},
@@ -123,7 +142,10 @@
       "name": "Ignore Unknown Callback",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [2256, 1360]
+      "position": [
+        2256,
+        1360
+      ]
     },
     {
       "parameters": {
@@ -133,7 +155,10 @@
       "name": "Build Gemini Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2048, 1456]
+      "position": [
+        2048,
+        1456
+      ]
     },
     {
       "parameters": {
@@ -152,7 +177,10 @@
       "name": "Gemini Command Router",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2256, 1456],
+      "position": [
+        2256,
+        1456
+      ],
       "continueOnFail": true,
       "credentials": {
         "httpHeaderAuth": {
@@ -169,7 +197,10 @@
       "name": "Parse and Validate AI Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2480, 1456]
+      "position": [
+        2480,
+        1456
+      ]
     },
     {
       "parameters": {
@@ -214,7 +245,10 @@
       "name": "Needs Clarification",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [2704, 1456]
+      "position": [
+        2704,
+        1456
+      ]
     },
     {
       "parameters": {
@@ -224,7 +258,10 @@
       "name": "Build Clarification Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2928, 1376]
+      "position": [
+        2928,
+        1376
+      ]
     },
     {
       "parameters": {
@@ -240,7 +277,10 @@
       "name": "Send Clarification",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [3136, 1376],
+      "position": [
+        3136,
+        1376
+      ],
       "webhookId": "35f8c0e9-7ca7-4a81-87cb-94b79d03e423",
       "credentials": {
         "telegramApi": {
@@ -252,13 +292,17 @@
     {
       "parameters": {
         "mode": "expression",
-        "output": "={{ ['ADD_LEAD','LIST_LEADS','GET_LEAD','UPDATE_LEAD','CHANGE_STATUS','UPDATE_DEAL_VALUE'].includes($json.command) ? 0 : (['RECORD_INTERACTION','ADD_NOTE','GET_LEAD_HISTORY'].includes($json.command) ? 1 : (['CREATE_FOLLOW_UP','COMPLETE_FOLLOW_UP'].includes($json.command) ? 2 : ($json.command === 'DAILY_PRIORITY' ? 3 : (['PIPELINE_ANALYTICS','REVENUE_ANALYTICS','LEAD_ANALYTICS'].includes($json.command) ? 4 : 5)))) }}"
+        "output": "={{ ['ADD_LEAD','LIST_LEADS','GET_LEAD','UPDATE_LEAD','CHANGE_STATUS','UPDATE_DEAL_VALUE'].includes($json.command) ? 0 : (['RECORD_INTERACTION','ADD_NOTE','GET_LEAD_HISTORY'].includes($json.command) ? 1 : (['CREATE_FOLLOW_UP','COMPLETE_FOLLOW_UP'].includes($json.command) ? 2 : ($json.command === 'DAILY_PRIORITY' ? 3 : (['PIPELINE_ANALYTICS','REVENUE_ANALYTICS','LEAD_ANALYTICS'].includes($json.command) ? 4 : 5)))) }}",
+        "numberOutputs": 6
       },
       "id": "28be2422-20a3-460d-aa3d-2c9180930970",
       "name": "Route Command",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
-      "position": [2704, 1616]
+      "position": [
+        2704,
+        1616
+      ]
     },
     {
       "parameters": {
@@ -280,7 +324,10 @@
       "name": "Execute Lead Management",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [2928, 1520]
+      "position": [
+        2928,
+        1520
+      ]
     },
     {
       "parameters": {
@@ -302,7 +349,10 @@
       "name": "Execute Interaction History",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [2928, 1600]
+      "position": [
+        2928,
+        1600
+      ]
     },
     {
       "parameters": {
@@ -324,7 +374,10 @@
       "name": "Execute Followup Management",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [2928, 1680]
+      "position": [
+        2928,
+        1680
+      ]
     },
     {
       "parameters": {
@@ -344,7 +397,10 @@
       "name": "Execute Daily Priorities",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [2928, 1760]
+      "position": [
+        2928,
+        1760
+      ]
     },
     {
       "parameters": {
@@ -365,7 +421,10 @@
       "name": "Execute Analytics",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [2928, 1840]
+      "position": [
+        2928,
+        1840
+      ]
     },
     {
       "parameters": {},
@@ -373,7 +432,10 @@
       "name": "Fallback Unknown",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [2928, 1920]
+      "position": [
+        2928,
+        1920
+      ]
     },
     {
       "parameters": {
@@ -389,7 +451,10 @@
       "name": "Send Response",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [3360, 1456],
+      "position": [
+        3360,
+        1456
+      ],
       "webhookId": "08f19a6b-0d8d-4792-a14c-06e3140e8c72",
       "credentials": {
         "telegramApi": {
@@ -425,7 +490,10 @@
       "name": "Has Response Text",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [3136, 1520]
+      "position": [
+        3136,
+        1520
+      ]
     },
     {
       "parameters": {},
@@ -433,104 +501,269 @@
       "name": "Skip (Already Sent)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [3360, 1600]
+      "position": [
+        3360,
+        1600
+      ]
     }
   ],
   "pinData": {},
   "connections": {
     "Telegram Trigger": {
       "main": [
-        [{ "node": "Extract Input", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Extract Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Extract Input": {
       "main": [
-        [{ "node": "Is Callback Query", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Is Callback Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Is Callback Query": {
       "main": [
-        [{ "node": "Route Callback Prefix", "type": "main", "index": 0 }],
-        [{ "node": "Build Gemini Request", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Route Callback Prefix",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Gemini Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Route Callback Prefix": {
       "main": [
-        [{ "node": "Execute Followup Callback", "type": "main", "index": 0 }],
-        [{ "node": "Execute Approval Callback", "type": "main", "index": 0 }],
-        [{ "node": "Ignore Unknown Callback", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Execute Followup Callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Approval Callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Unknown Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Build Gemini Request": {
       "main": [
-        [{ "node": "Gemini Command Router", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Gemini Command Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Gemini Command Router": {
       "main": [
-        [{ "node": "Parse and Validate AI Output", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Parse and Validate AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Parse and Validate AI Output": {
       "main": [
-        [{ "node": "Needs Clarification", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Needs Clarification",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Needs Clarification": {
       "main": [
-        [{ "node": "Build Clarification Message", "type": "main", "index": 0 }],
-        [{ "node": "Route Command", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Build Clarification Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Build Clarification Message": {
       "main": [
-        [{ "node": "Send Clarification", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Send Clarification",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Route Command": {
       "main": [
-        [{ "node": "Execute Lead Management", "type": "main", "index": 0 }],
-        [{ "node": "Execute Interaction History", "type": "main", "index": 0 }],
-        [{ "node": "Execute Followup Management", "type": "main", "index": 0 }],
-        [{ "node": "Execute Daily Priorities", "type": "main", "index": 0 }],
-        [{ "node": "Execute Analytics", "type": "main", "index": 0 }],
-        [{ "node": "Fallback Unknown", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Execute Lead Management",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Interaction History",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Followup Management",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Daily Priorities",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback Unknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Execute Lead Management": {
       "main": [
-        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Has Response Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Execute Interaction History": {
       "main": [
-        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Has Response Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Execute Followup Management": {
       "main": [
-        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Has Response Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Execute Daily Priorities": {
       "main": [
-        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Has Response Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Execute Analytics": {
       "main": [
-        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Has Response Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Fallback Unknown": {
       "main": [
-        [{ "node": "Has Response Text", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Has Response Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Has Response Text": {
       "main": [
-        [{ "node": "Send Response", "type": "main", "index": 0 }],
-        [{ "node": "Skip (Already Sent)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip (Already Sent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
