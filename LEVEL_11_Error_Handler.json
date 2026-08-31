@@ -1,0 +1,114 @@
+{
+ "name": "LEVEL_11_Error_Handler",
+ "nodes": [
+  {
+   "id": "error_trigger",
+   "name": "Error Trigger",
+   "type": "n8n-nodes-base.errorTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "extract_error_ctx",
+   "name": "Extract Error Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const e = $json;\nconst workflowName = (e.workflow && e.workflow.name) || 'Unknown workflow';\nconst nodeName = (e.execution && e.execution.lastNodeExecuted) || (e.trigger && e.trigger.node) || 'unknown node';\nconst message = (e.execution && e.execution.error && e.execution.error.message)\n  || (e.error && e.error.message)\n  || 'Unknown error';\nreturn [{ json: { workflowName, nodeName, message: String(message).slice(0, 500) } }];"
+   }
+  },
+  {
+   "id": "log_error",
+   "name": "Log Error",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.5,
+   "position": [
+    440,
+    0
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "INSERT INTO error_log (workflow_name, node_name, error_message) VALUES ($1, $2, $3)",
+    "options": {
+     "queryReplacement": "={{ [ $json.workflowName, $json.nodeName, $json.message ] }}"
+    }
+   },
+   "credentials": {
+    "postgres": {
+     "id": "REPLACE_ME",
+     "name": "Postgres account"
+    }
+   }
+  },
+  {
+   "id": "send_error_alert",
+   "name": "Send Error Alert",
+   "type": "n8n-nodes-base.telegram",
+   "typeVersion": 1.2,
+   "position": [
+    660,
+    0
+   ],
+   "parameters": {
+    "chatId": "={{ $env.PERSONAL_CHAT_ID }}",
+    "text": "=\u26a0\ufe0f Something went wrong in <b>{{ $('Extract Error Context').first().json.workflowName }}</b>.\nI've logged it \u2014 please try that action again in a moment.",
+    "additionalFields": {
+     "parse_mode": "HTML"
+    }
+   },
+   "credentials": {
+    "telegramApi": {
+     "id": "ANhhemYmmRjIkSZo",
+     "name": "Telegram account"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Error Trigger": {
+   "main": [
+    [
+     {
+      "node": "Extract Error Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Extract Error Context": {
+   "main": [
+    [
+     {
+      "node": "Log Error",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Log Error": {
+   "main": [
+    [
+     {
+      "node": "Send Error Alert",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "pinData": {}
+}

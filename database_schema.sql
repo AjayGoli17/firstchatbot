@@ -80,6 +80,11 @@ CREATE INDEX IF NOT EXISTS idx_interactions_date ON interactions(interaction_dat
 
 -- ------------------------------------------------------------
 -- Table: follow_ups
+-- calendar_event_id links a PENDING follow-up to its Google Calendar
+-- reminder event (see LEVEL_6_Followup_Management), so reschedules/cancels
+-- update or delete the same event instead of creating duplicates.
+-- If this table already exists from a prior install, run
+-- database_migration_002_calendar_event_id.sql instead of this file.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS follow_ups (
     id                  BIGSERIAL PRIMARY KEY,
@@ -87,6 +92,7 @@ CREATE TABLE IF NOT EXISTS follow_ups (
     due_at              TIMESTAMPTZ NOT NULL,
     attempt_number      INTEGER NOT NULL DEFAULT 1 CHECK (attempt_number >= 1),
     status              TEXT NOT NULL DEFAULT 'PENDING',
+    calendar_event_id   TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at        TIMESTAMPTZ,
 
@@ -102,5 +108,50 @@ CREATE INDEX IF NOT EXISTS idx_followups_due_status ON follow_ups(status, due_at
 CREATE UNIQUE INDEX IF NOT EXISTS uq_followups_one_pending_per_lead
     ON follow_ups(lead_id)
     WHERE status = 'PENDING';
+
+-- ------------------------------------------------------------
+-- Table: processed_updates
+-- Idempotency guard: LEVEL_3 inserts the Telegram update_id here
+-- before doing anything else. A duplicate/retried webhook delivery
+-- hits the PK conflict and the workflow stops silently, so the same
+-- message can never create two leads, two follow-ups, or two
+-- Calendar events.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS processed_updates (
+    update_id    BIGINT PRIMARY KEY,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_processed_updates_time ON processed_updates (processed_at);
+
+-- ------------------------------------------------------------
+-- Table: pending_actions
+-- One row per chat: the in-progress intent while a required field is
+-- still missing (e.g. "Add CBS School" -> waiting on "service"). Read
+-- and cleared by LEVEL_3 on the next message from that chat; ignored
+-- automatically after 15 minutes so it can never trap a chat forever.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pending_actions (
+    chat_id    TEXT PRIMARY KEY,
+    command    TEXT NOT NULL,
+    parameters JSONB NOT NULL DEFAULT '{}'::jsonb,
+    missing    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ------------------------------------------------------------
+-- Table: error_log
+-- Written by LEVEL_11_Error_Handler, which is wired as the n8n
+-- "Error Workflow" (Workflow Settings -> Error Workflow) for every
+-- other workflow, so any unhandled node failure lands here and also
+-- sends you one friendly Telegram alert instead of a stack trace.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS error_log (
+    id             BIGSERIAL PRIMARY KEY,
+    workflow_name  TEXT,
+    node_name      TEXT,
+    error_message  TEXT,
+    occurred_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_error_log_time ON error_log (occurred_at);
 
 COMMIT;
