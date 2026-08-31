@@ -191,6 +191,7 @@
       "name": "Sync Lead Next Follow Up",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
+      "alwaysOutputData": true,
       "position": [
         1320,
         60

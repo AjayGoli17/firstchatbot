@@ -140,6 +140,7 @@
    "name": "Sync Lead Next Follow Up",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     1340,
     -40
@@ -253,6 +254,7 @@
    "name": "Clear Lead Next Follow Up",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     1560,
     180
@@ -399,6 +401,7 @@
    "name": "Save Calendar Event Id",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     1340,
     -160
@@ -598,6 +601,7 @@
    "name": "Save Calendar Event Id (Update)",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     2220,
     460
@@ -621,6 +625,7 @@
    "name": "Sync Lead Next Follow Up (Update)",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     2440,
     380
@@ -802,6 +807,7 @@
    "name": "Clear Lead Next Follow Up (Cancel)",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     2000,
     660

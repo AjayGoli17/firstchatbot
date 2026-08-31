@@ -196,7 +196,7 @@
   },
   {
    "parameters": {
-    "jsCode": "const j = $json;\nconst FIELD_QUESTIONS = {\n  business_name: \"What's the business name?\",\n  service: 'What service is this lead interested in?',\n  deal_value: \"What's the expected deal value? (e.g. \\u20b930,000)\",\n  status: 'What status should I set it to? (e.g. Contacted, Proposal Sent, Won, Lost)',\n  notes: 'What note would you like to add?',\n  content: 'What would you like to note down?',\n  follow_up_date: 'When should I remind you? (e.g. tomorrow 10am)'\n};\nlet text;\nif (j.systemError) {\n  text = \"\\u26a0\\ufe0f I couldn't reach the AI service. Please try again in a moment.\";\n} else if (j.command === 'UNKNOWN') {\n  text = \"\\ud83e\\udd14 I didn't understand that. Try something like:\\n\\u2022 \\\"Add ABC School as a \\u20b925,000 website lead\\\"\\n\\u2022 \\\"Show my active leads\\\"\\n\\u2022 \\\"Move ABC School to proposal\\\"\";\n} else if (j.missing && j.missing.length) {\n  const field = j.missing[0];\n  text = FIELD_QUESTIONS[field] || `I still need: ${field}. Could you send that?`;\n} else {\n  text = \"\\u26a0\\ufe0f I'm not confident I understood that correctly. Could you rephrase?\";\n}\nreturn [{ json: { chatId: j.chatId, text } }];"
+    "jsCode": "const j = $('Should Save Pending').first().json;\nconst FIELD_QUESTIONS = {\n  business_name: \"What's the business name?\",\n  service: 'What service is this lead interested in?',\n  deal_value: \"What's the expected deal value? (e.g. \\u20b930,000)\",\n  status: 'What status should I set it to? (e.g. Contacted, Proposal Sent, Won, Lost)',\n  notes: 'What note would you like to add?',\n  content: 'What would you like to note down?',\n  follow_up_date: 'When should I remind you? (e.g. tomorrow 10am)'\n};\nlet text;\nif (j.systemError) {\n  text = \"\\u26a0\\ufe0f I couldn't reach the AI service. Please try again in a moment.\";\n} else if (j.command === 'UNKNOWN') {\n  text = \"\\ud83e\\udd14 I didn't understand that. Try something like:\\n\\u2022 \\\"Add ABC School as a \\u20b925,000 website lead\\\"\\n\\u2022 \\\"Show my active leads\\\"\\n\\u2022 \\\"Move ABC School to proposal\\\"\";\n} else if (j.missing && j.missing.length) {\n  const field = j.missing[0];\n  text = FIELD_QUESTIONS[field] || `I still need: ${field}. Could you send that?`;\n} else {\n  text = \"\\u26a0\\ufe0f I'm not confident I understood that correctly. Could you rephrase?\";\n}\nreturn [{ json: { chatId: j.chatId, text } }];"
    },
    "id": "cc0bfeff-d165-4cbc-b312-7b2e90b5d27a",
    "name": "Build Clarification Message",
@@ -583,6 +583,7 @@
    "name": "Clear Pending Action (Cancel)",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     16,
     640
@@ -765,6 +766,7 @@
    "name": "Upsert Pending Action",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     896,
     200
@@ -788,6 +790,7 @@
    "name": "Clear Pending Action",
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.5,
+   "alwaysOutputData": true,
    "position": [
     672,
     544
@@ -817,7 +820,7 @@
    ],
    "parameters": {
     "language": "javaScript",
-    "jsCode": "const j = $json;\nreturn [{ json: { ...j, action: j.command, chat_id: String(j.chatId), user_id: String(j.userId) } }];"
+    "jsCode": "const j = $('Needs Clarification').first().json;\nreturn [{ json: { ...j, action: j.command, chat_id: String(j.chatId), user_id: String(j.userId) } }];"
    }
   },
   {

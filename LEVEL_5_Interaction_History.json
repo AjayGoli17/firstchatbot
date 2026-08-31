@@ -140,7 +140,8 @@
           "id": "REPLACE_ME",
           "name": "Postgres account"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "id": "upsert_followup",
@@ -187,7 +188,8 @@
           "id": "REPLACE_ME",
           "name": "Postgres account"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "id": "interaction_confirm",
