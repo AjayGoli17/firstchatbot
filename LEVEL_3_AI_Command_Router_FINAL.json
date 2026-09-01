@@ -533,7 +533,8 @@
      "id": "REPLACE_ME",
      "name": "Postgres account"
     }
-   }
+   },
+   "continueOnFail": true
   },
   {
    "id": "restore_context",
@@ -661,7 +662,8 @@
      "name": "Postgres account"
     }
    },
-   "alwaysOutputData": true
+   "alwaysOutputData": true,
+   "continueOnFail": true
   },
   {
    "id": "has_pending_action",
@@ -717,9 +719,19 @@
    ],
    "parameters": {
     "workflowId": {
-     "__rl": true,
-     "value": "REPLACE_ME_AI_ROUTER_WORKFLOW_ID",
-     "mode": "id"
+     "value": "AI_COMMAND_ROUTER",
+     "mode": "list"
+    },
+    "workflowInputs": {
+     "value": {
+      "text": "={{$json.text}}",
+      "chatId": "={{$json.chatId}}",
+      "userId": "={{$json.userId}}",
+      "messageId": "={{$json.messageId}}",
+      "callbackQueryId": "={{$json.callbackQueryId}}",
+      "callbackData": "={{$json.callbackData}}",
+      "updateId": "={{$json.updateId}}"
+     }
     },
     "options": {}
    }
@@ -836,6 +848,20 @@
     "language": "javaScript",
     "jsCode": "const j = $json;\nconst message = j.message !== undefined ? j.message : j.text;\nconst success = j.success !== undefined ? j.success : !!message;\nreturn [{ json: {\n  chatId: j.chatId || j.chat_id,\n  text: message,\n  success,\n  action: j.action || j.command,\n  data: j.data !== undefined ? j.data : j,\n  message\n} }];"
    }
+  },
+  {
+   "parameters": {
+    "language": "javaScript",
+    "jsCode": "const trig = $('Restore Context').first().json;\nconst db = ($input.first() && $input.first().json) ? $input.first().json : {};\n\nreturn [{\n  json: {\n    ...trig,\n    chat_id: db.chat_id || null,\n    command: db.command || null,\n    parameters: db.parameters || null,\n    missing: db.missing || null\n  }\n}];"
+   },
+   "id": "merge_pending_context",
+   "name": "Merge Pending Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    128,
+    480
+   ]
   }
  ],
  "pinData": {},
@@ -1159,7 +1185,7 @@
    "main": [
     [
      {
-      "node": "Has Pending Action",
+      "node": "Merge Pending Context",
       "type": "main",
       "index": 0
      }
@@ -1262,6 +1288,17 @@
     [
      {
       "node": "Has Response Text",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge Pending Context": {
+   "main": [
+    [
+     {
+      "node": "Has Pending Action",
       "type": "main",
       "index": 0
      }

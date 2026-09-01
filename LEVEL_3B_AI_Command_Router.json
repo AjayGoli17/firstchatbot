@@ -21,6 +21,18 @@
       },
       {
        "name": "userId"
+      },
+      {
+       "name": "messageId"
+      },
+      {
+       "name": "callbackQueryId"
+      },
+      {
+       "name": "callbackData"
+      },
+      {
+       "name": "updateId"
       }
      ]
     }
@@ -36,7 +48,7 @@
     224
    ],
    "parameters": {
-    "jsCode": "const systemPrompt = `You are an intent-classification engine for a freelancer's personal operations assistant.\nYou ONLY interpret intent. You NEVER perform calculations, NEVER invent data, and NEVER modify anything.\n\nReturn ONLY a single JSON object, no prose, no markdown fences, matching exactly:\n{\"command\":\"<ONE_OF_ALLOWED_COMMANDS>\",\"confidence\":<0..1 number>,\"parameters\":{...}}\n\nAllowed commands:\nADD_LEAD, LIST_LEADS, GET_LEAD, UPDATE_LEAD, CHANGE_STATUS, UPDATE_DEAL_VALUE,\nRECORD_INTERACTION, ADD_NOTE, GET_LEAD_HISTORY,\nCREATE_FOLLOW_UP, COMPLETE_FOLLOW_UP, UPDATE_FOLLOW_UP, CANCEL_FOLLOW_UP, LIST_FOLLOW_UPS,\nDAILY_PRIORITY, PIPELINE_ANALYTICS, REVENUE_ANALYTICS, LEAD_ANALYTICS,\nUNKNOWN\n\nParameter fields you may extract (omit any you cannot find in the message, never invent values):\nbusiness_name, contact_name, email, phone, service, status, deal_value, currency,\nnotes, interaction_type, content, follow_up_date, interval_days, report_type, filter.\n\nRules:\n- If the message is ambiguous or missing information required to act, still return your best-guess command but set confidence below 0.6 and omit the missing fields.\n- Never fabricate a business_name, date, or amount that was not stated by the user.\n- If you cannot classify at all, return command \"UNKNOWN\".\n- Output raw JSON only.`;\n\nconst userText = $json.text;\n\nreturn [{\n  json: {\n    chatId: $json.chatId,\n    userId: $json.userId,\n    requestBody: {\n      temperature: 0,\n      systemPrompt,\n      userText\n    }\n  }\n}];"
+    "jsCode": "const systemPrompt = `You are an intent-classification engine for a freelancer's personal operations assistant.\nYou ONLY interpret intent. You NEVER perform calculations, NEVER invent data, and NEVER modify anything.\n\nReturn ONLY a single JSON object, no prose, no markdown fences, matching exactly:\n{\"command\":\"<ONE_OF_ALLOWED_COMMANDS>\",\"confidence\":<0..1 number>,\"parameters\":{...}}\n\nAllowed commands:\nADD_LEAD, LIST_LEADS, GET_LEAD, UPDATE_LEAD, CHANGE_STATUS, UPDATE_DEAL_VALUE,\nRECORD_INTERACTION, ADD_NOTE, GET_LEAD_HISTORY,\nCREATE_FOLLOW_UP, COMPLETE_FOLLOW_UP, UPDATE_FOLLOW_UP, CANCEL_FOLLOW_UP, LIST_FOLLOW_UPS,\nDAILY_PRIORITY, PIPELINE_ANALYTICS, REVENUE_ANALYTICS, LEAD_ANALYTICS,\nUNKNOWN\n\nParameter fields you may extract (omit any you cannot find in the message, never invent values):\nbusiness_name, contact_name, email, phone, service, status, deal_value, currency,\nnotes, interaction_type, content, follow_up_date, interval_days, report_type, filter.\n\nRules:\n- If the message is ambiguous or missing information required to act, still return your best-guess command but set confidence below 0.6 and omit the missing fields.\n- Never fabricate a business_name, date, or amount that was not stated by the user.\n- If you cannot classify at all, return command \"UNKNOWN\".\n- Output raw JSON only.`;\n\nconst trig = $input.first().json;\nconst userText = trig.text || '';\n\nreturn [{\n  json: {\n    chatId: trig.chatId,\n    userId: trig.userId,\n    text: trig.text,\n    messageId: trig.messageId,\n    callbackQueryId: trig.callbackQueryId,\n    callbackData: trig.callbackData,\n    updateId: trig.updateId,\n    requestBody: {\n      temperature: 0,\n      systemPrompt,\n      userText\n    }\n  }\n}];"
    }
   },
   {
@@ -50,7 +62,7 @@
    ],
    "parameters": {
     "method": "POST",
-    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
     "authentication": "genericCredentialType",
     "genericAuthType": "httpHeaderAuth",
     "sendBody": true,
@@ -58,6 +70,12 @@
     "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [ { text: $json.requestBody.systemPrompt } ] }, contents: [ { role: \"user\", parts: [ { text: $json.requestBody.userText } ] } ], generationConfig: { temperature: $json.requestBody.temperature, responseMimeType: \"application/json\" } }) }}",
     "options": {
      "timeout": 20000
+    }
+   },
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "REPLACE_ME",
+     "name": "Header Auth account"
     }
    },
    "continueOnFail": true
@@ -72,7 +90,7 @@
     224
    ],
    "parameters": {
-    "jsCode": "const REQUIRED = {\n  ADD_LEAD: ['business_name'],\n  LIST_LEADS: [],\n  GET_LEAD: ['business_name'],\n  UPDATE_LEAD: ['business_name'],\n  CHANGE_STATUS: ['business_name', 'status'],\n  UPDATE_DEAL_VALUE: ['business_name', 'deal_value'],\n  RECORD_INTERACTION: ['business_name'],\n  ADD_NOTE: ['business_name', 'notes'],\n  GET_LEAD_HISTORY: ['business_name'],\n  CREATE_FOLLOW_UP: ['business_name'],\n  COMPLETE_FOLLOW_UP: ['business_name'],\n  UPDATE_FOLLOW_UP: ['business_name'],\n  CANCEL_FOLLOW_UP: ['business_name'],\n  LIST_FOLLOW_UPS: [],\n  DAILY_PRIORITY: [],\n  PIPELINE_ANALYTICS: [],\n  REVENUE_ANALYTICS: [],\n  LEAD_ANALYTICS: [],\n  UNKNOWN: []\n};\n\nconst ALLOWED_STATUS = ['NEW','CONTACTED','REPLIED','QUALIFIED','PROPOSAL_SENT','NEGOTIATION','WON','LOST'];\n\n// Maps common phrasing Gemini might return to the exact enum value the DB expects.\nconst STATUS_ALIASES = {\n  'PROPOSAL': 'PROPOSAL_SENT',\n  'PROPOSAL SENT': 'PROPOSAL_SENT',\n  'SENT PROPOSAL': 'PROPOSAL_SENT',\n  'SEND PROPOSAL': 'PROPOSAL_SENT',\n  'CONTACT': 'CONTACTED',\n  'REPLY': 'REPLIED',\n  'REPLIED TO': 'REPLIED',\n  'QUALIFY': 'QUALIFIED',\n  'NEGOTIATE': 'NEGOTIATION',\n  'NEGOTIATING': 'NEGOTIATION',\n  'WIN': 'WON',\n  'CLOSED WON': 'WON',\n  'LOSE': 'LOST',\n  'CLOSED LOST': 'LOST',\n  'NEW LEAD': 'NEW'\n};\n\nconst chatId = $('Build Gemini Request').first().json.chatId;\nconst userId = $('Build Gemini Request').first().json.userId;\n\nlet parsed = null;\ntry {\n  const raw = $input.first().json;\n  const candidate = raw.candidates && raw.candidates[0];\n  if (raw.error || !candidate || !candidate.content || !candidate.content.parts) throw new Error('gemini_error');\n  let text = candidate.content.parts.map(p => p.text || '').join('');\n  text = text.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();\n  parsed = JSON.parse(text);\n} catch (e) {\n  return [{ json: { chatId, userId, command: 'UNKNOWN', confidence: 0, parameters: {}, missing: [], systemError: true } }];\n}\n\nlet command = typeof parsed.command === 'string' ? parsed.command.toUpperCase().trim() : 'UNKNOWN';\nif (!(command in REQUIRED)) command = 'UNKNOWN';\n\nlet confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;\nlet parameters = (parsed.parameters && typeof parsed.parameters === 'object') ? parsed.parameters : {};\n\nif (parameters.status) {\n  let s = String(parameters.status).toUpperCase().trim();\n  if (STATUS_ALIASES[s]) s = STATUS_ALIASES[s];\n  parameters.status = s;\n  if (!ALLOWED_STATUS.includes(parameters.status)) {\n    parameters._invalidStatus = parameters.status;\n    delete parameters.status;\n  }\n}\n\nif (parameters.deal_value !== undefined) {\n  const v = Number(String(parameters.deal_value).toString().replace(/[^0-9.\\-]/g, ''));\n  parameters.deal_value = isNaN(v) ? undefined : v;\n}\n\nconst missing = (REQUIRED[command] || []).filter(f => parameters[f] === undefined || parameters[f] === null || parameters[f] === '');\n\nreturn [{\n  json: { chatId, userId, command, confidence, parameters, missing, systemError: false }\n}];"
+    "jsCode": "const REQUIRED = {\n  ADD_LEAD: ['business_name'],\n  LIST_LEADS: [],\n  GET_LEAD: ['business_name'],\n  UPDATE_LEAD: ['business_name'],\n  CHANGE_STATUS: ['business_name', 'status'],\n  UPDATE_DEAL_VALUE: ['business_name', 'deal_value'],\n  RECORD_INTERACTION: ['business_name'],\n  ADD_NOTE: ['business_name', 'notes'],\n  GET_LEAD_HISTORY: ['business_name'],\n  CREATE_FOLLOW_UP: ['business_name'],\n  COMPLETE_FOLLOW_UP: ['business_name'],\n  UPDATE_FOLLOW_UP: ['business_name'],\n  CANCEL_FOLLOW_UP: ['business_name'],\n  LIST_FOLLOW_UPS: [],\n  DAILY_PRIORITY: [],\n  PIPELINE_ANALYTICS: [],\n  REVENUE_ANALYTICS: [],\n  LEAD_ANALYTICS: [],\n  UNKNOWN: []\n};\n\nconst ALLOWED_STATUS = ['NEW','CONTACTED','REPLIED','QUALIFIED','PROPOSAL_SENT','NEGOTIATION','WON','LOST'];\n\n// Maps common phrasing Gemini might return to the exact enum value the DB expects.\nconst STATUS_ALIASES = {\n  'PROPOSAL': 'PROPOSAL_SENT',\n  'PROPOSAL SENT': 'PROPOSAL_SENT',\n  'SENT PROPOSAL': 'PROPOSAL_SENT',\n  'SEND PROPOSAL': 'PROPOSAL_SENT',\n  'CONTACT': 'CONTACTED',\n  'REPLY': 'REPLIED',\n  'REPLIED TO': 'REPLIED',\n  'QUALIFY': 'QUALIFIED',\n  'NEGOTIATE': 'NEGOTIATION',\n  'NEGOTIATING': 'NEGOTIATION',\n  'WIN': 'WON',\n  'CLOSED WON': 'WON',\n  'LOSE': 'LOST',\n  'CLOSED LOST': 'LOST',\n  'NEW LEAD': 'NEW'\n};\n\nconst trig = $('Build Gemini Request').first().json;\nconst chatId = trig.chatId;\nconst userId = trig.userId;\nconst text = trig.text;\nconst messageId = trig.messageId;\nconst callbackQueryId = trig.callbackQueryId;\nconst callbackData = trig.callbackData;\nconst updateId = trig.updateId;\n\nlet parsed = null;\ntry {\n  const raw = $input.first().json;\n  const candidate = raw.candidates && raw.candidates[0];\n  if (raw.error || !candidate || !candidate.content || !candidate.content.parts) throw new Error('gemini_error');\n  let rawText = candidate.content.parts.map(p => p.text || '').join('');\n  rawText = rawText.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();\n  parsed = JSON.parse(rawText);\n} catch (e) {\n  return [{\n    json: {\n      chatId,\n      userId,\n      text,\n      messageId,\n      callbackQueryId,\n      callbackData,\n      updateId,\n      command: 'UNKNOWN',\n      confidence: 0,\n      parameters: {},\n      missing: [],\n      systemError: true\n    }\n  }];\n}\n\nlet command = typeof parsed.command === 'string' ? parsed.command.toUpperCase().trim() : 'UNKNOWN';\nif (!(command in REQUIRED)) command = 'UNKNOWN';\n\nlet confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;\nlet parameters = (parsed.parameters && typeof parsed.parameters === 'object') ? parsed.parameters : {};\n\nif (parameters.status) {\n  let s = String(parameters.status).toUpperCase().trim();\n  if (STATUS_ALIASES[s]) s = STATUS_ALIASES[s];\n  parameters.status = s;\n  if (!ALLOWED_STATUS.includes(parameters.status)) {\n    parameters._invalidStatus = parameters.status;\n    delete parameters.status;\n  }\n}\n\nif (parameters.deal_value !== undefined) {\n  const v = Number(String(parameters.deal_value).toString().replace(/[^0-9.\\-]/g, ''));\n  parameters.deal_value = isNaN(v) ? undefined : v;\n}\n\nconst missing = (REQUIRED[command] || []).filter(f => parameters[f] === undefined || parameters[f] === null || parameters[f] === '');\n\nreturn [{\n  json: {\n    chatId,\n    userId,\n    text,\n    messageId,\n    callbackQueryId,\n    callbackData,\n    updateId,\n    command,\n    confidence,\n    parameters,\n    missing,\n    systemError: false\n  }\n}];"
    }
   }
  ],
