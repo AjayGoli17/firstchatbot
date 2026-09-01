@@ -943,11 +943,6 @@
    "main": [
     [
      {
-      "node": "Sync Lead Next Follow Up",
-      "type": "main",
-      "index": 0
-     },
-     {
       "node": "Create Calendar Event",
       "type": "main",
       "index": 0
