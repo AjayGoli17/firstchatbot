@@ -1,0 +1,18 @@
+{
+  "name": "telegramchatbot-tests",
+  "version": "1.0.0",
+  "description": "Automated test suite for local n8n freelance operations assistant Telegram chatbot workflows",
+  "main": "test_runner.js",
+  "scripts": {
+    "test": "node test_runner.js",
+    "test:live": "node test/terminal_test.js"
+  },
+  "keywords": [
+    "n8n",
+    "telegram-bot",
+    "automation",
+    "testing"
+  ],
+  "author": "",
+  "license": "ISC"
+}
