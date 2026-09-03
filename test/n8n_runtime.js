@@ -475,6 +475,65 @@ class N8nRuntime {
       return { command: 'UNKNOWN', confidence: 0, parameters: {} };
     }
 
+    // 1.5. Safety Confirmations for Delete
+    if (/^confirm\s+delete\s+all\s+leads$/i.test(lower) || /^confirm\s+delete\s+every\s+lead$/i.test(lower)) {
+      return { command: 'DELETE_ALL_LEADS', confidence: 1, parameters: { confirmed: true } };
+    }
+    if (/^confirm\s+delete\s+lead\s+(.+)$/i.test(lower)) {
+      const m = raw.match(/^confirm\s+delete\s+lead\s+(.+)$/i);
+      return { command: 'DELETE_LEAD', confidence: 1, parameters: { business_name: m ? m[1].trim() : '', confirmed: true } };
+    }
+    if (/^confirm\s+delete\s+all\s+follow[- ]?ups$/i.test(lower)) {
+      return { command: 'DELETE_ALL_FOLLOWUPS', confidence: 1, parameters: { confirmed: true } };
+    }
+    if (/^confirm\s+delete\s+all\s+interactions$/i.test(lower)) {
+      return { command: 'DELETE_ALL_INTERACTIONS', confidence: 1, parameters: { confirmed: true } };
+    }
+    if (/^confirm\s+delete\s+everything$/i.test(lower)) {
+      return { command: 'DELETE_EVERYTHING', confidence: 1, parameters: { confirmed: true } };
+    }
+
+    // 1.6. Unconfirmed Delete / Remove Commands
+    if (/(?:delete|remove)\s+(?:all|every)\s+leads?/i.test(lower)) {
+      return { command: 'DELETE_ALL_LEADS', confidence: 0.95, parameters: { confirmed: false } };
+    }
+    if (/(?:delete|remove)\s+(?:all|every)\s+follow[- ]?ups?/i.test(lower)) {
+      return { command: 'DELETE_ALL_FOLLOWUPS', confidence: 0.95, parameters: { confirmed: false } };
+    }
+    if (/(?:delete|remove)\s+(?:all|every)\s+interactions?/i.test(lower)) {
+      return { command: 'DELETE_ALL_INTERACTIONS', confidence: 0.95, parameters: { confirmed: false } };
+    }
+    if (/(?:delete|remove)\s+everything/i.test(lower)) {
+      return { command: 'DELETE_EVERYTHING', confidence: 0.95, parameters: { confirmed: false } };
+    }
+    if (/(?:delete|remove|cancel)\s+follow[- ]?up\s+(?:for\s+)?([A-Za-z0-9\s&'-]+)/i.test(lower)) {
+      const m = raw.match(/(?:delete|remove|cancel)\s+follow[- ]?up\s+(?:for\s+)?([A-Za-z0-9\s&'-]+)/i);
+      return {
+        command: 'DELETE_FOLLOW_UP',
+        confidence: 0.95,
+        parameters: { business_name: m ? m[1].trim() : '' }
+      };
+    }
+    if (/(?:delete|remove)\s+lead\s+([A-Za-z0-9\s&'-]+)/i.test(lower)) {
+      const m = raw.match(/(?:delete|remove)\s+lead\s+([A-Za-z0-9\s&'-]+)/i);
+      return {
+        command: 'DELETE_LEAD',
+        confidence: 0.95,
+        parameters: { business_name: m ? m[1].trim() : '', confirmed: false }
+      };
+    }
+    if (/^(?:delete|remove)\s+([A-Za-z0-9\s&'-]+)$/i.test(lower)) {
+      const m = raw.match(/^(?:delete|remove)\s+([A-Za-z0-9\s&'-]+)$/i);
+      const target = m ? m[1].trim() : '';
+      if (!/^(all|everything|every)/i.test(target)) {
+        return {
+          command: 'AMBIGUOUS_DELETE',
+          confidence: 0.5,
+          parameters: { business_name: target }
+        };
+      }
+    }
+
     // 2. Interaction History Intents (Checked before GET_LEAD)
     if (/show\s+(my\s+)?history\s+with|what\s+happened\s+with|history\s+(?:for|with)/i.test(lower)) {
       const m = raw.match(/(?:history with|history for|happened with)\s+([A-Za-z0-9\s&'-]+)/i);

@@ -776,6 +776,358 @@ const testMatrix = [
         throw new Error(`Expected echo message, got: ${JSON.stringify(msg)}`);
       }
     }
+  },
+
+  // =========================================================================
+  // 12. Delete Functionality (LEVEL_4, LEVEL_5, LEVEL_6)
+  // =========================================================================
+  {
+    id: 'TEST-040',
+    category: 'Delete Functionality',
+    message: 'delete all leads',
+    description: 'Delete all leads request -> confirmation prompt only',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'Lead 1' });
+      db.seedLead({ business_name: 'Lead 2' });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> If Delete All Leads Confirmed (False) -> Prompt Delete All Leads Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('This will permanently delete all leads') || !msg.text.includes('CONFIRM DELETE ALL LEADS')) {
+        throw new Error(`Expected confirmation prompt for delete all leads, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM leads');
+      if (rows.length !== 2) {
+        throw new Error(`Leads should NOT be deleted before confirmation, found: ${rows.length}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-041',
+    category: 'Delete Functionality',
+    message: 'CONFIRM DELETE ALL LEADS',
+    description: 'Exact confirmation -> all leads deleted',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'Lead 1' });
+      db.seedLead({ business_name: 'Lead 2' });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> If Delete All Leads Confirmed (True) -> Delete All Leads DB -> Build Delete All Leads Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('All leads and related records have been deleted')) {
+        throw new Error(`Expected delete all leads success confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM leads');
+      if (rows.length !== 0) {
+        throw new Error(`Expected 0 leads after deletion, found: ${rows.length}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-042',
+    category: 'Delete Functionality',
+    message: 'delete lead Makeup Academy',
+    description: 'Delete specific lead request -> confirmation prompt only',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'Makeup Academy' });
+      db.seedLead({ business_name: 'Hair Studio' });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> If Delete Lead Confirmed (False) -> Prompt Delete Lead Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Confirm deletion of lead "Makeup Academy"') || !msg.text.includes('CONFIRM DELETE LEAD MAKEUP ACADEMY')) {
+        throw new Error(`Expected confirmation prompt for Makeup Academy, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM leads');
+      if (rows.length !== 2) {
+        throw new Error(`Lead should NOT be deleted before confirmation, found: ${rows.length}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-043',
+    category: 'Delete Functionality',
+    message: 'CONFIRM DELETE LEAD MAKEUP ACADEMY',
+    description: 'Exact confirmation -> only specified lead deleted',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'Makeup Academy' });
+      db.seedLead({ business_name: 'Hair Studio' });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> If Delete Lead Confirmed (True) -> Delete Lead From DB -> Build Delete Lead Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Deleted lead "Makeup Academy"')) {
+        throw new Error(`Expected delete lead success confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const makeupRows = db.query('SELECT * FROM leads WHERE business_name = ?', ['Makeup Academy']);
+      if (makeupRows.length !== 0) throw new Error('Makeup Academy should have been deleted');
+      const hairRows = db.query('SELECT * FROM leads WHERE business_name = ?', ['Hair Studio']);
+      if (hairRows.length !== 1) throw new Error('Hair Studio should still exist');
+    }
+  },
+  {
+    id: 'TEST-044',
+    category: 'Delete Functionality',
+    message: 'delete all followups',
+    description: 'Delete all followups request -> confirmation prompt only',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Test Lead' });
+      db.seedFollowUp({ lead_id: l.id });
+    },
+    expectedRoute: 'AI Router -> Execute Followup Management -> Is Delete All Followups -> If Delete All Followups Confirmed (False) -> Prompt Delete All Followups Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('This will permanently delete all follow-ups') || !msg.text.includes('CONFIRM DELETE ALL FOLLOWUPS')) {
+        throw new Error(`Expected confirmation prompt for delete all followups, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM follow_ups');
+      if (rows.length !== 1) throw new Error('Follow-ups should not be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-045',
+    category: 'Delete Functionality',
+    message: 'CONFIRM DELETE ALL FOLLOWUPS',
+    description: 'Exact confirmation -> all follow-ups deleted',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      const l1 = db.seedLead({ business_name: 'Lead 1', next_follow_up_at: '2026-09-05' });
+      const l2 = db.seedLead({ business_name: 'Lead 2', next_follow_up_at: '2026-09-06' });
+      db.seedFollowUp({ lead_id: l1.id });
+      db.seedFollowUp({ lead_id: l2.id });
+    },
+    expectedRoute: 'AI Router -> Execute Followup Management -> Delete All Followups DB -> Clear All Leads Next Followup DB -> Build Delete All Followups Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('All follow-ups have been deleted')) {
+        throw new Error(`Expected all follow-ups deleted message, got: ${JSON.stringify(msg)}`);
+      }
+      const fuRows = db.query('SELECT * FROM follow_ups');
+      if (fuRows.length !== 0) throw new Error('Expected 0 follow-ups remaining');
+      const leadRows = db.query('SELECT next_follow_up_at FROM leads WHERE next_follow_up_at IS NOT NULL');
+      if (leadRows.length !== 0) throw new Error('Lead next_follow_up_at should be reset to NULL');
+    }
+  },
+  {
+    id: 'TEST-046',
+    category: 'Delete Functionality',
+    message: 'delete followup for Makeup Academy',
+    description: 'Delete followup for specific lead -> deletes follow-up and updates lead',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Makeup Academy', next_follow_up_at: '2026-09-10' });
+      db.seedFollowUp({ lead_id: l.id, status: 'PENDING' });
+    },
+    expectedRoute: 'AI Router -> Execute Followup Management -> Find Lead By Name -> Route Followup Command -> Find Pending Followup (Delete) -> Delete Followup DB -> Clear Lead Next Follow Up (Delete) -> Build Delete Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Follow-up for') || !msg.text.includes('deleted')) {
+        throw new Error(`Expected follow-up deleted confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const fuRows = db.query('SELECT * FROM follow_ups WHERE lead_id = (SELECT id FROM leads WHERE business_name = ?)', ['Makeup Academy']);
+      if (fuRows.length !== 0) throw new Error('Follow-up was not deleted');
+      const leadRows = db.query('SELECT next_follow_up_at FROM leads WHERE business_name = ?', ['Makeup Academy']);
+      if (leadRows[0].next_follow_up_at) throw new Error('Lead next_follow_up_at should be cleared');
+    }
+  },
+  {
+    id: 'TEST-047',
+    category: 'Delete Functionality',
+    message: 'delete Makeup Academy',
+    description: 'Ambiguous delete command -> bot asks whether to delete lead, follow-up, or both',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    expectedRoute: 'AI Router (AMBIGUOUS_DELETE) -> Needs Clarification -> Build Clarification Message -> Send Clarification',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Do you want to delete the lead "Makeup Academy"') || !msg.text.includes('delete followup for Makeup Academy')) {
+        throw new Error(`Expected ambiguous delete clarification question, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-048',
+    category: 'Delete Functionality',
+    message: 'delete everything',
+    description: 'Delete everything request -> confirmation required before deletion',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Lead 1' });
+      db.seedInteraction({ lead_id: l.id, content: 'Spoke with lead' });
+      db.seedFollowUp({ lead_id: l.id });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> If Delete Everything Confirmed (False) -> Prompt Delete Everything Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('This will permanently delete all data') || !msg.text.includes('CONFIRM DELETE EVERYTHING')) {
+        throw new Error(`Expected confirmation prompt for delete everything, got: ${JSON.stringify(msg)}`);
+      }
+      const leads = db.query('SELECT * FROM leads');
+      if (leads.length === 0) throw new Error('Data should NOT be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-049',
+    category: 'Delete Functionality',
+    message: 'CONFIRM DELETE EVERYTHING',
+    description: 'Exact confirmation -> all data permanently deleted',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Lead 1' });
+      db.seedInteraction({ lead_id: l.id, content: 'Spoke with lead' });
+      db.seedFollowUp({ lead_id: l.id });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> If Delete Everything Confirmed (True) -> Delete Everything DB -> Build Delete Everything Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('All system data (leads, follow-ups, interactions) has been permanently deleted')) {
+        throw new Error(`Expected delete everything success message, got: ${JSON.stringify(msg)}`);
+      }
+      const leads = db.query('SELECT * FROM leads');
+      if (leads.length !== 0) throw new Error('Expected 0 leads');
+    }
+  },
+  {
+    id: 'TEST-050',
+    category: 'Delete Functionality',
+    message: 'delete all interactions',
+    description: 'Delete all interactions request -> confirmation prompt only',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_5_Interaction_History',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Lead 1' });
+      db.seedInteraction({ lead_id: l.id, content: 'Met lead' });
+    },
+    expectedRoute: 'AI Router -> Execute Interaction History -> Is Delete All Interactions -> If Delete All Interactions Confirmed (False) -> Prompt Delete All Interactions Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('This will permanently delete all interaction history') || !msg.text.includes('CONFIRM DELETE ALL INTERACTIONS')) {
+        throw new Error(`Expected confirmation prompt for delete all interactions, got: ${JSON.stringify(msg)}`);
+      }
+      const ints = db.query('SELECT * FROM interactions');
+      if (ints.length === 0) throw new Error('Interactions should NOT be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-051',
+    category: 'Delete Functionality',
+    message: 'CONFIRM DELETE ALL INTERACTIONS',
+    description: 'Exact confirmation -> all interactions deleted',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_5_Interaction_History',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Lead 1' });
+      db.seedInteraction({ lead_id: l.id, content: 'Met lead' });
+    },
+    expectedRoute: 'AI Router -> Execute Interaction History -> Is Delete All Interactions -> If Delete All Interactions Confirmed (True) -> Delete All Interactions DB -> Build Delete All Interactions Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('All interaction history has been deleted')) {
+        throw new Error(`Expected delete all interactions success message, got: ${JSON.stringify(msg)}`);
+      }
+      const ints = db.query('SELECT * FROM interactions');
+      if (ints.length !== 0) throw new Error('Expected 0 interactions after deletion');
+    }
+  },
+  {
+    id: 'TEST-052',
+    category: 'Delete Functionality',
+    message: 'delete every lead',
+    description: 'Natural variation: "delete every lead" -> confirmation prompt only',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'Lead 1' });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> Prompt Delete All Leads Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('This will permanently delete all leads') || !msg.text.includes('CONFIRM DELETE ALL LEADS')) {
+        throw new Error(`Expected confirmation prompt for delete every lead, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM leads');
+      if (rows.length !== 1) throw new Error('Lead should not be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-053',
+    category: 'Delete Functionality',
+    message: 'remove lead Makeup Academy',
+    description: 'Natural variation: "remove lead Makeup Academy" -> confirmation prompt only',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'Makeup Academy' });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> Prompt Delete Lead Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Confirm deletion of lead "Makeup Academy"') || !msg.text.includes('CONFIRM DELETE LEAD MAKEUP ACADEMY')) {
+        throw new Error(`Expected confirmation prompt for remove lead Makeup Academy, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM leads');
+      if (rows.length !== 1) throw new Error('Lead should not be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-054',
+    category: 'Delete Functionality',
+    message: 'delete all follow-ups',
+    description: 'Natural variation: "delete all follow-ups" -> confirmation prompt only',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Lead 1' });
+      db.seedFollowUp({ lead_id: l.id });
+    },
+    expectedRoute: 'AI Router -> Execute Followup Management -> Prompt Delete All Followups Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('This will permanently delete all follow-ups') || !msg.text.includes('CONFIRM DELETE ALL FOLLOWUPS')) {
+        throw new Error(`Expected confirmation prompt for delete all follow-ups, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM follow_ups');
+      if (rows.length !== 1) throw new Error('Follow-ups should not be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-055',
+    category: 'Delete Functionality',
+    message: 'remove all followups',
+    description: 'Natural variation: "remove all followups" -> confirmation prompt only',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Lead 1' });
+      db.seedFollowUp({ lead_id: l.id });
+    },
+    expectedRoute: 'AI Router -> Execute Followup Management -> Prompt Delete All Followups Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('This will permanently delete all follow-ups') || !msg.text.includes('CONFIRM DELETE ALL FOLLOWUPS')) {
+        throw new Error(`Expected confirmation prompt for remove all followups, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM follow_ups');
+      if (rows.length !== 1) throw new Error('Follow-ups should not be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-056',
+    category: 'Delete Functionality',
+    message: 'cancel followup for Makeup Academy',
+    description: 'Natural variation: "cancel followup for Makeup Academy" -> correct cancellation/deletion',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      const l = db.seedLead({ business_name: 'Makeup Academy', next_follow_up_at: '2026-09-10' });
+      db.seedFollowUp({ lead_id: l.id, status: 'PENDING' });
+    },
+    expectedRoute: 'AI Router -> Execute Followup Management -> Cancel/Delete follow-up',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || (!msg.text.includes('deleted') && !msg.text.includes('cancelled'))) {
+        throw new Error(`Expected cancel/delete confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const fuRows = db.query("SELECT * FROM follow_ups WHERE lead_id = (SELECT id FROM leads WHERE business_name = 'Makeup Academy') AND status = 'PENDING'");
+      if (fuRows.length !== 0) throw new Error('Pending follow-up should no longer be PENDING');
+    }
   }
 ];
 

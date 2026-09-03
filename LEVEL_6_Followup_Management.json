@@ -92,8 +92,8 @@
    ],
    "parameters": {
     "mode": "expression",
-    "output": "={{ ['CREATE_FOLLOW_UP','COMPLETE_FOLLOW_UP','UPDATE_FOLLOW_UP','CANCEL_FOLLOW_UP'].indexOf($('Execute Workflow Trigger').first().json.command) }}",
-    "numberOutputs": 4,
+    "output": "={{ ['CREATE_FOLLOW_UP','COMPLETE_FOLLOW_UP','UPDATE_FOLLOW_UP','CANCEL_FOLLOW_UP','DELETE_FOLLOW_UP'].indexOf($('Execute Workflow Trigger').first().json.command) }}",
+    "numberOutputs": 5,
     "options": {}
    }
   },
@@ -855,6 +855,282 @@
     "language": "javaScript",
     "jsCode": "const lead = $('Find Lead By Name').first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `${lead.business_name} has no pending follow-up to cancel.` } }];"
    }
+  },
+  {
+   "id": "is_del_all_fu",
+   "name": "Is Delete All Followups",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    60,
+    -40
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "typeValidation": "strict"
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.command }}",
+       "rightValue": "DELETE_ALL_FOLLOWUPS",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       }
+      }
+     ],
+     "combinator": "and"
+    }
+   }
+  },
+  {
+   "id": "if_del_all_fu_conf",
+   "name": "If Delete All Followups Confirmed",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    280,
+    -160
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "typeValidation": "strict"
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.parameters && $json.parameters.confirmed === true }}",
+       "rightValue": true,
+       "operator": {
+        "type": "boolean",
+        "operation": "true"
+       }
+      }
+     ],
+     "combinator": "and"
+    }
+   }
+  },
+  {
+   "id": "prompt_del_all_fu",
+   "name": "Prompt Delete All Followups Confirmation",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    500,
+    -220
+   ],
+   "parameters": {
+    "language": "javaScript",
+    "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `⚠️ This will permanently delete all follow-ups.\n\nReply:\nCONFIRM DELETE ALL FOLLOWUPS` } }];"
+   }
+  },
+  {
+   "id": "del_all_fu_db",
+   "name": "Delete All Followups DB",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.5,
+   "position": [
+    500,
+    -100
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "DELETE FROM follow_ups",
+    "options": {}
+   },
+   "alwaysOutputData": true
+  },
+  {
+   "id": "clear_all_leads_fu_db",
+   "name": "Clear All Leads Next Followup DB",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.5,
+   "position": [
+    720,
+    -100
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "UPDATE leads SET next_follow_up_at = NULL",
+    "options": {}
+   },
+   "alwaysOutputData": true
+  },
+  {
+   "id": "build_del_all_fu_confirm",
+   "name": "Build Delete All Followups Confirmation",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    940,
+    -100
+   ],
+   "parameters": {
+    "language": "javaScript",
+    "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ All follow-ups have been deleted.` } }];"
+   }
+  },
+  {
+   "id": "find_pending_del",
+   "name": "Find Pending Followup (Delete)",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.5,
+   "position": [
+    900,
+    920
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "SELECT id, calendar_event_id FROM follow_ups WHERE lead_id = $1 AND status = 'PENDING' LIMIT 1",
+    "options": {
+     "queryReplacement": "={{ [ $('Find Lead By Name').first().json.id ] }}"
+    }
+   },
+   "alwaysOutputData": true
+  },
+  {
+   "id": "if_pending_del",
+   "name": "Pending Found (Delete)",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1120,
+    920
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "leftValue": "={{$json.id}}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty"
+       }
+      }
+     ],
+     "combinator": "and"
+    }
+   }
+  },
+  {
+   "id": "del_followup_db",
+   "name": "Delete Followup DB",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.5,
+   "position": [
+    1340,
+    880
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "DELETE FROM follow_ups WHERE id = $1 RETURNING *",
+    "options": {
+     "queryReplacement": "={{ [ $json.id ] }}"
+    }
+   }
+  },
+  {
+   "id": "if_has_cal_del",
+   "name": "Has Calendar Event (Delete)",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1560,
+    880
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $('Find Pending Followup (Delete)').first().json.calendar_event_id }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty"
+       }
+      }
+     ],
+     "combinator": "and"
+    }
+   }
+  },
+  {
+   "id": "delete_cal_event_del",
+   "name": "Delete Calendar Event (Delete)",
+   "type": "n8n-nodes-base.googleCalendar",
+   "typeVersion": 1.3,
+   "position": [
+    1780,
+    820
+   ],
+   "parameters": {
+    "operation": "delete",
+    "calendar": {
+     "__rl": true,
+     "value": "primary",
+     "mode": "list"
+    },
+    "eventId": "={{ $('Find Pending Followup (Delete)').first().json.calendar_event_id }}"
+   }
+  },
+  {
+   "id": "clear_lead_del",
+   "name": "Clear Lead Next Follow Up (Delete)",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.5,
+   "alwaysOutputData": true,
+   "position": [
+    2000,
+    880
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "UPDATE leads SET next_follow_up_at = NULL WHERE id = $1",
+    "options": {
+     "queryReplacement": "={{ [ $('Find Lead By Name').first().json.id ] }}"
+    }
+   }
+  },
+  {
+   "id": "build_del_confirm",
+   "name": "Build Delete Confirmation",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2220,
+    880
+   ],
+   "parameters": {
+    "language": "javaScript",
+    "jsCode": "const lead = $('Find Lead By Name').first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ Follow-up for <b>${lead.business_name}</b> deleted.` } }];"
+   }
+  },
+  {
+   "id": "no_pending_del",
+   "name": "No Pending Followup (Delete)",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1340,
+    1000
+   ],
+   "parameters": {
+    "language": "javaScript",
+    "jsCode": "const lead = $('Find Lead By Name').first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `${lead.business_name} has no pending follow-up to delete.` } }];"
+   }
   }
  ],
  "connections": {
@@ -862,7 +1138,65 @@
    "main": [
     [
      {
+      "node": "Is Delete All Followups",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Is Delete All Followups": {
+   "main": [
+    [
+     {
+      "node": "If Delete All Followups Confirmed",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
       "node": "Is List Command",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "If Delete All Followups Confirmed": {
+   "main": [
+    [
+     {
+      "node": "Delete All Followups DB",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Prompt Delete All Followups Confirmation",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Delete All Followups DB": {
+   "main": [
+    [
+     {
+      "node": "Clear All Leads Next Followup DB",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Clear All Leads Next Followup DB": {
+   "main": [
+    [
+     {
+      "node": "Build Delete All Followups Confirmation",
       "type": "main",
       "index": 0
      }
@@ -924,6 +1258,13 @@
     [
      {
       "node": "Find Pending Followup (Cancel)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Find Pending Followup (Delete)",
       "type": "main",
       "index": 0
      }
@@ -1252,6 +1593,86 @@
     [
      {
       "node": "Build Cancel Confirmation",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Find Pending Followup (Delete)": {
+   "main": [
+    [
+     {
+      "node": "Pending Found (Delete)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Pending Found (Delete)": {
+   "main": [
+    [
+     {
+      "node": "Delete Followup DB",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "No Pending Followup (Delete)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Delete Followup DB": {
+   "main": [
+    [
+     {
+      "node": "Has Calendar Event (Delete)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Has Calendar Event (Delete)": {
+   "main": [
+    [
+     {
+      "node": "Delete Calendar Event (Delete)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Clear Lead Next Follow Up (Delete)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Delete Calendar Event (Delete)": {
+   "main": [
+    [
+     {
+      "node": "Clear Lead Next Follow Up (Delete)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Clear Lead Next Follow Up (Delete)": {
+   "main": [
+    [
+     {
+      "node": "Build Delete Confirmation",
       "type": "main",
       "index": 0
      }

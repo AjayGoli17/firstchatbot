@@ -17,8 +17,8 @@
     {
       "parameters": {
         "mode": "expression",
-        "output": "={{ ['ADD_LEAD','LIST_LEADS','GET_LEAD','UPDATE_LEAD','CHANGE_STATUS','UPDATE_DEAL_VALUE'].indexOf($json.command) }}",
-        "numberOutputs": 6
+        "output": "={{ ['ADD_LEAD','LIST_LEADS','GET_LEAD','UPDATE_LEAD','CHANGE_STATUS','UPDATE_DEAL_VALUE','DELETE_LEAD','DELETE_ALL_LEADS','DELETE_EVERYTHING'].indexOf($json.command) }}",
+        "numberOutputs": 9
       },
       "id": "0a2c5166-b754-4f72-8aaa-144b5ed336a9",
       "name": "Route Lead Command",
@@ -667,6 +667,275 @@
         0,
         1024
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.parameters && $json.parameters.confirmed === true}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_del_lead_conf",
+      "name": "If Delete Lead Confirmed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -448,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nconst bName = (trig.parameters && trig.parameters.business_name) || '';\nreturn [{ json: { chatId: trig.chatId, text: `⚠️ Confirm deletion of lead \"${bName}\".\n\nReply:\nCONFIRM DELETE LEAD ${bName.toUpperCase()}` } }];"
+      },
+      "id": "prompt_del_lead",
+      "name": "Prompt Delete Lead Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        1080
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM leads WHERE LOWER(business_name) = LOWER($1) RETURNING business_name",
+        "options": {
+          "queryReplacement": "={{ [$('Execute Workflow Trigger').first().json.parameters.business_name] }}"
+        }
+      },
+      "id": "del_lead_db",
+      "name": "Delete Lead From DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -224,
+        1200
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.business_name}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_lead_found_del",
+      "name": "If Lead Found (Delete)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nconst bName = $json.business_name || (trig.parameters && trig.parameters.business_name);\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ Deleted lead \"${bName}\" and all associated records.` } }];"
+      },
+      "id": "build_del_lead_confirm",
+      "name": "Build Delete Lead Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        1160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `⚠️ I couldn't find a lead called \"${trig.parameters.business_name}\".` } }];"
+      },
+      "id": "lead_not_found_del",
+      "name": "Lead Not Found (Delete)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        1260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.parameters && $json.parameters.confirmed === true}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_del_all_leads_conf",
+      "name": "If Delete All Leads Confirmed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -448,
+        1380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `⚠️ This will permanently delete all leads and their related records.\n\nReply:\nCONFIRM DELETE ALL LEADS` } }];"
+      },
+      "id": "prompt_del_all_leads",
+      "name": "Prompt Delete All Leads Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        1340
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM leads",
+        "options": {}
+      },
+      "id": "del_all_leads_db",
+      "name": "Delete All Leads DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -224,
+        1440
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ All leads and related records have been deleted.` } }];"
+      },
+      "id": "build_del_all_leads_confirm",
+      "name": "Build Delete All Leads Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.parameters && $json.parameters.confirmed === true}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_del_everything_conf",
+      "name": "If Delete Everything Confirmed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -448,
+        1580
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `⚠️ This will permanently delete all data (leads, follow-ups, interactions).\n\nReply:\nCONFIRM DELETE EVERYTHING` } }];"
+      },
+      "id": "prompt_del_everything",
+      "name": "Prompt Delete Everything Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        1540
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM leads",
+        "options": {}
+      },
+      "id": "del_everything_db",
+      "name": "Delete Everything DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -224,
+        1640
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ All system data (leads, follow-ups, interactions) has been permanently deleted.` } }];"
+      },
+      "id": "build_del_everything_confirm",
+      "name": "Build Delete Everything Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1640
+      ]
     }
   ],
   "pinData": {},
@@ -722,6 +991,132 @@
         [
           {
             "node": "Find Lead For Value",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Delete Lead Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Delete All Leads Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Delete Everything Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Delete Lead Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Delete Lead From DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prompt Delete Lead Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Lead From DB": {
+      "main": [
+        [
+          {
+            "node": "If Lead Found (Delete)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Lead Found (Delete)": {
+      "main": [
+        [
+          {
+            "node": "Build Delete Lead Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead Not Found (Delete)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Delete All Leads Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Delete All Leads DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prompt Delete All Leads Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete All Leads DB": {
+      "main": [
+        [
+          {
+            "node": "Build Delete All Leads Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Delete Everything Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Delete Everything DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prompt Delete Everything Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Everything DB": {
+      "main": [
+        [
+          {
+            "node": "Build Delete Everything Confirmation",
             "type": "main",
             "index": 0
           }
