@@ -386,8 +386,9 @@
     },
     "start": "={{ $('Compute Due Date').first().json.dueAt }}",
     "end": "={{ new Date(new Date($('Compute Due Date').first().json.dueAt).getTime() + 30*60000).toISOString() }}",
-    "summary": "=Follow up: {{ $('Compute Due Date').first().json.businessName }}",
-    "additionalFields": {}
+    "additionalFields": {
+     "summary": "=Follow up: {{ $('Compute Due Date').first().json.businessName }}"
+    }
    },
    "credentials": {
     "googleCalendarOAuth2Api": {
@@ -586,8 +587,9 @@
     },
     "start": "={{ $('Compute New Due Date').first().json.dueAt }}",
     "end": "={{ new Date(new Date($('Compute New Due Date').first().json.dueAt).getTime() + 30*60000).toISOString() }}",
-    "summary": "=Follow up: {{ $('Compute New Due Date').first().json.businessName }}",
-    "additionalFields": {}
+    "additionalFields": {
+     "summary": "=Follow up: {{ $('Compute New Due Date').first().json.businessName }}"
+    }
    },
    "credentials": {
     "googleCalendarOAuth2Api": {
