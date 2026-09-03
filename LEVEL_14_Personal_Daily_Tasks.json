@@ -1,0 +1,557 @@
+{
+  "name": "LEVEL_14_Personal_Daily_Tasks",
+  "nodes": [
+    {
+      "id": "trigger14",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "extract14",
+      "name": "Extract Task Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst cmd = item.command || \"LIST_TASKS\";\nconst params = item.parameters || {};\nconst userId = String(item.userId || item.chatId || \"default\");\nconst chatId = item.chatId;\n\n// 1. Resolve task date\nlet taskDate = params.task_date || params.due_date || params.date;\nif (!taskDate) {\n  const now = new Date();\n  const todayIso = new Intl.DateTimeFormat(\"en-CA\", {\n    timeZone: \"Asia/Kolkata\",\n    year: \"numeric\",\n    month: \"2-digit\",\n    day: \"2-digit\"\n  }).format(now);\n  taskDate = todayIso;\n} else if (taskDate.includes(\"T\")) {\n  taskDate = taskDate.split(\"T\")[0];\n}\n\n// 2. Resolve task items\nlet taskList = [];\nif (Array.isArray(params.tasks) && params.tasks.length > 0) {\n  taskList = params.tasks.map(t => typeof t === \"string\" ? t : (t.content || t.task_name || \"\")).filter(Boolean);\n} else if (typeof params.tasks === \"string\") {\n  taskList = params.tasks.split(\"\\n\").map(t => t.trim().replace(/^[-*•0-9.)\\s]+/, \"\")).filter(Boolean);\n} else if (item.text && item.text.includes(\"\\n\")) {\n  const lines = item.text.split(\"\\n\").map(l => l.trim()).filter(Boolean);\n  const taskLines = lines.filter(l => !/^(?:tasks?\\s+for|daily\\s+tasks?|my\\s+tasks?|todo)/i.test(l));\n  taskList = taskLines.map(t => t.replace(/^[-*•0-9.)\\s]+/, \"\").trim()).filter(Boolean);\n}\n\nlet singleContent = params.task_name || params.content || \"\";\nif (!singleContent && taskList.length === 1) {\n  singleContent = taskList[0];\n} else if (!singleContent && item.text) {\n  singleContent = item.text.replace(/^(?:add\\s+task(?:\\s+for\\s+[A-Za-z0-9\\s,]+)?:?|new\\s+task:?|create\\s+task:?|update\\s+task\\s+[0-9]+(?:\\s+to)?:?)[:\\s]*/i, \"\").trim();\n}\n\nlet taskId = null;\nif (params.task_id || params.id) {\n  const rawId = String(params.task_id || params.id).replace(/[^0-9]/g, \"\");\n  if (rawId) taskId = parseInt(rawId, 10);\n}\n\nconst confirmed = params.confirmed === true || String(params.confirmed).toLowerCase() === \"true\";\n\nreturn [{\n  json: {\n    command: cmd,\n    chatId,\n    userId,\n    taskDate,\n    taskList,\n    singleContent,\n    taskId,\n    confirmed,\n    parameters: params,\n    text: item.text\n  }\n}];"
+      }
+    },
+    {
+      "id": "route14",
+      "name": "Route Task Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ [\"CREATE_DAILY_TASKS\", \"LIST_TASKS\", \"ADD_TASK\", \"UPDATE_TASK\", \"COMPLETE_TASK\", \"DELETE_TASK\", \"DELETE_ALL_TASKS\"].indexOf($json.command) }}",
+        "numberOutputs": 7
+      }
+    },
+    {
+      "id": "bulk_insert14",
+      "name": "Bulk Insert Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst list = trig.taskList.length > 0 ? trig.taskList : [trig.singleContent].filter(Boolean);\n\nreturn list.map(item => ({\n  json: {\n    userId: trig.userId,\n    chatId: String(trig.chatId),\n    taskDate: trig.taskDate,\n    content: item\n  }\n}));"
+      }
+    },
+    {
+      "id": "insert_task_row",
+      "name": "Insert Task Row",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content) VALUES ($1, $2, $3, $4) RETURNING id, task_date, content, status",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId, $json.chatId, $json.taskDate, $json.content ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_bulk_add14",
+      "name": "Format Bulk Add Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst rows = $input.all().map(i => i.json).filter(i => i && i.id);\nif (rows.length === 0) {\n  return [{ json: { chatId: trig.chatId, text: \"⚠️ Failed to save tasks.\" } }];\n}\nconst lines = rows.map((r, idx) => `${idx + 1}. (ID: #${r.id}) ${r.content}`);\nconst text = `📋 <b>${rows.length} task(s) saved for ${trig.taskDate}:</b>\\n\\n${lines.join(\"\\n\")}`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
+      }
+    },
+    {
+      "id": "query_tasks14",
+      "name": "Query Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        40
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, task_date, content, status FROM personal_daily_tasks WHERE user_id = $1 AND task_date = $2 ORDER BY status DESC, id ASC LIMIT 50",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId, $json.taskDate ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_list14",
+      "name": "Format Tasks List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        40
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst items = $input.all().map(i => i.json).filter(i => i && i.id);\nif (items.length === 0) {\n  return [{ json: { chatId: trig.chatId, text: `📋 You have no tasks for ${trig.taskDate}.` } }];\n}\nconst lines = items.map((item, idx) => {\n  const icon = item.status === \"COMPLETED\" ? \"✅\" : \"▫️\";\n  return `${idx + 1}. (ID: #${item.id}) ${icon} ${item.content}`;\n});\nconst text = `📋 <b>TASKS FOR ${trig.taskDate}</b>\\n\\n${lines.join(\"\\n\")}`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
+      }
+    },
+    {
+      "id": "insert_single_task",
+      "name": "Insert Single Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        160
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content) VALUES ($1, $2, $3, $4) RETURNING id, task_date, content, status",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId, String($json.chatId), $json.taskDate, $json.singleContent ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_single_add14",
+      "name": "Format Single Add Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        160
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst r = $input.first().json;\nif (!r || !r.id) {\n  return [{ json: { chatId: trig.chatId, text: \"⚠️ Failed to add task.\" } }];\n}\nreturn [{\n  json: {\n    chatId: trig.chatId,\n    text: `📋 <b>Task added!</b> (ID: #${r.id})\\n\\n<b>Date:</b> ${r.task_date}\\n<b>Task:</b> ${r.content}`,\n    taskId: r.id\n  }\n}];"
+      }
+    },
+    {
+      "id": "update_task_query",
+      "name": "Update Task Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        280
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE personal_daily_tasks SET content = COALESCE(NULLIF($3, ''), content), updated_at = now() WHERE id = $1 AND user_id = $2 RETURNING id, content, task_date, status",
+        "options": {
+          "queryReplacement": "={{ [ $json.taskId, $json.userId, $json.singleContent ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_update14",
+      "name": "Format Update Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        280
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst r = $input.first().json;\nif (r && r.id) {\n  return [{ json: { chatId: trig.chatId, text: `📋 Task #${r.id} updated: \"${r.content}\"` } }];\n}\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Task not found or doesn't belong to you.\" } }];"
+      }
+    },
+    {
+      "id": "complete_task_query",
+      "name": "Complete Task Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE personal_daily_tasks SET status = 'COMPLETED', updated_at = now() WHERE id = $1 AND user_id = $2 RETURNING id, content, task_date, status",
+        "options": {
+          "queryReplacement": "={{ [ $json.taskId, $json.userId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_complete14",
+      "name": "Format Complete Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        400
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst r = $input.first().json;\nif (r && r.id) {\n  return [{ json: { chatId: trig.chatId, text: `✅ Task #${r.id} completed! (${r.content})` } }];\n}\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Task not found or doesn't belong to you.\" } }];"
+      }
+    },
+    {
+      "id": "delete_task_query",
+      "name": "Delete Task Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        520
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM personal_daily_tasks WHERE id = $1 AND user_id = $2 RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [ $json.taskId, $json.userId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_del_task14",
+      "name": "Format Delete Task Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        520
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst r = $input.first().json;\nif (r && r.id) {\n  return [{ json: { chatId: trig.chatId, text: `🗑️ Task #${r.id} deleted.` } }];\n}\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Task not found or doesn't belong to you.\" } }];"
+      }
+    },
+    {
+      "id": "check_confirm_del_all_tasks",
+      "name": "Check Confirm Delete All Tasks",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.confirmed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "delete_all_tasks_query",
+      "name": "Delete All Tasks Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        600
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM personal_daily_tasks WHERE user_id = $1 AND ($2 = '' OR task_date = $2) RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId, $json.taskDate || '' ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_del_all_tasks14",
+      "name": "Format Delete All Tasks Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        600
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst count = $input.all().filter(i => i.json && i.json.id).length;\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ Deleted ${count} task(s) for ${trig.taskDate}.` } }];"
+      }
+    },
+    {
+      "id": "fmt_prompt_del_tasks14",
+      "name": "Format Confirm Prompt Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        700
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nreturn [{ json: { chatId: trig.chatId, text: `⚠️ Are you sure you want to delete all tasks for ${trig.taskDate}? This cannot be undone.\\n\\nReply with \"CONFIRM DELETE ALL TASKS\" to proceed.` } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Task Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Task Input": {
+      "main": [
+        [
+          {
+            "node": "Route Task Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Task Command": {
+      "main": [
+        [
+          {
+            "node": "Bulk Insert Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Single Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Task Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Complete Task Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Task Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Confirm Delete All Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bulk Insert Tasks": {
+      "main": [
+        [
+          {
+            "node": "Insert Task Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Task Row": {
+      "main": [
+        [
+          {
+            "node": "Format Bulk Add Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Tasks": {
+      "main": [
+        [
+          {
+            "node": "Format Tasks List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Single Task": {
+      "main": [
+        [
+          {
+            "node": "Format Single Add Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Task Query": {
+      "main": [
+        [
+          {
+            "node": "Format Update Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Task Query": {
+      "main": [
+        [
+          {
+            "node": "Format Complete Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Task Query": {
+      "main": [
+        [
+          {
+            "node": "Format Delete Task Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Confirm Delete All Tasks": {
+      "main": [
+        [
+          {
+            "node": "Delete All Tasks Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Confirm Prompt Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete All Tasks Query": {
+      "main": [
+        [
+          {
+            "node": "Format Delete All Tasks Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

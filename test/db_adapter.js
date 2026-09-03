@@ -70,11 +70,46 @@ class DatabaseAdapter {
         error_message       TEXT,
         occurred_at         TEXT NOT NULL DEFAULT (datetime('now'))
       );
+
+      CREATE TABLE IF NOT EXISTS standalone_notes (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id             TEXT NOT NULL,
+        content             TEXT NOT NULL,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS standalone_reminders (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id             TEXT NOT NULL,
+        chat_id             TEXT NOT NULL,
+        content             TEXT NOT NULL,
+        reminder_at         TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'PENDING',
+        notified_at         TEXT,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS personal_daily_tasks (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id             TEXT NOT NULL,
+        chat_id             TEXT NOT NULL,
+        task_date           TEXT NOT NULL DEFAULT (date('now')),
+        content             TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'PENDING',
+        notified_at         TEXT,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `);
   }
 
   reset() {
     this.db.exec(`
+      DELETE FROM personal_daily_tasks;
+      DELETE FROM standalone_reminders;
+      DELETE FROM standalone_notes;
       DELETE FROM interactions;
       DELETE FROM follow_ups;
       DELETE FROM leads;

@@ -1,0 +1,364 @@
+{
+  "name": "LEVEL_13_Standalone_Reminders",
+  "nodes": [
+    {
+      "id": "trigger13",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "extract13",
+      "name": "Extract Reminder Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst cmd = item.command || \"CREATE_REMINDER\";\nconst params = item.parameters || {};\nconst userId = String(item.userId || item.chatId || \"default\");\nconst chatId = item.chatId;\n\nlet content = (params && (params.reminder_text || params.content || params.notes)) || item.text || \"\";\nif (typeof content === \"string\") {\n  content = content.replace(/^(?:remind me to|remind me on [A-Za-z0-9\\s,]+ to|remind me tomorrow (?:at [A-Za-z0-9:]+ )?to|remind me (?:at [A-Za-z0-9:]+ )?to|create reminder:?|add reminder:?)[:\\s]*/i, \"\").trim();\n  if (!content && item.text) content = item.text.trim();\n}\n\nlet reminderAt = (params && (params.reminder_at || params.follow_up_date || params.due_at || params.due_date));\nif (!reminderAt) {\n  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);\n  reminderAt = d.toISOString();\n}\n\nlet reminderId = null;\nif (params && (params.reminder_id || params.id)) {\n  const rawId = String(params.reminder_id || params.id).replace(/[^0-9]/g, \"\");\n  if (rawId) reminderId = parseInt(rawId, 10);\n}\n\nconst confirmed = params && (params.confirmed === true || String(params.confirmed).toLowerCase() === \"true\");\n\nreturn [{\n  json: {\n    command: cmd,\n    chatId,\n    userId,\n    content,\n    reminderAt,\n    reminderId,\n    confirmed,\n    parameters: params,\n    text: item.text\n  }\n}];"
+      }
+    },
+    {
+      "id": "route13",
+      "name": "Route Reminder Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ [\"CREATE_REMINDER\", \"LIST_REMINDERS\", \"DELETE_REMINDER\", \"DELETE_ALL_REMINDERS\"].indexOf($json.command) }}",
+        "numberOutputs": 4
+      }
+    },
+    {
+      "id": "insert13",
+      "name": "Insert Standalone Reminder",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        60
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at) VALUES ($1, $2, $3, $4) RETURNING id, content, reminder_at, status",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId, String($json.chatId), $json.content, $json.reminderAt ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_create13",
+      "name": "Format Create Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        60
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Reminder Input\").first().json;\nconst r = $input.first().json;\nif (!r || !r.id) {\n  return [{ json: { chatId: trig.chatId, text: \"⚠️ Failed to create reminder.\" } }];\n}\nlet dateStr = r.reminder_at;\ntry {\n  const d = new Date(r.reminder_at);\n  if (!isNaN(d.getTime())) {\n    dateStr = new Intl.DateTimeFormat(\"en-IN\", {\n      timeZone: \"Asia/Kolkata\",\n      dateStyle: \"medium\",\n      timeStyle: \"short\"\n    }).format(d);\n  }\n} catch (e) {}\n\nreturn [{\n  json: {\n    chatId: trig.chatId,\n    text: `🔔 <b>Reminder set!</b> (ID: #${r.id})\\n\\n<b>What:</b> ${r.content}\\n<b>When:</b> ${dateStr}`,\n    reminderId: r.id\n  }\n}];"
+      }
+    },
+    {
+      "id": "query13",
+      "name": "Query Standalone Reminders",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        180
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, content, reminder_at, status FROM standalone_reminders WHERE user_id = $1 AND status = 'PENDING' ORDER BY reminder_at ASC LIMIT 50",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_list13",
+      "name": "Format Reminders List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        180
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Reminder Input\").first().json;\nconst items = $input.all().map(i => i.json).filter(i => i && i.id);\nif (items.length === 0) {\n  return [{ json: { chatId: trig.chatId, text: \"🔔 You don't have any active reminders.\" } }];\n}\nconst lines = items.map((item, idx) => {\n  let dateStr = item.reminder_at;\n  try {\n    const d = new Date(item.reminder_at);\n    if (!isNaN(d.getTime())) {\n      dateStr = new Intl.DateTimeFormat(\"en-IN\", {\n        timeZone: \"Asia/Kolkata\",\n        dateStyle: \"medium\",\n        timeStyle: \"short\"\n      }).format(d);\n    }\n  } catch (e) {}\n  return `${idx + 1}. (ID: #${item.id}) ⏰ ${dateStr}\\n   ${item.content}`;\n});\nconst text = `🔔 <b>YOUR REMINDERS</b>\\n\\n${lines.join(\"\\n\\n\")}`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
+      }
+    },
+    {
+      "id": "delete13",
+      "name": "Delete Standalone Reminder",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM standalone_reminders WHERE id = $1 AND user_id = $2 RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [ $json.reminderId, $json.userId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_del13",
+      "name": "Format Delete Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Reminder Input\").first().json;\nconst res = $input.first().json;\nif (res && res.id) {\n  return [{ json: { chatId: trig.chatId, text: `🗑️ Reminder #${res.id} deleted.` } }];\n}\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Reminder not found or doesn't belong to you.\" } }];"
+      }
+    },
+    {
+      "id": "check_confirm13",
+      "name": "Check Confirm Delete All",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.confirmed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "delete_all13",
+      "name": "Delete All Reminders Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        380
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM standalone_reminders WHERE user_id = $1 RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_del_all13",
+      "name": "Format Delete All Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        380
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Reminder Input\").first().json;\nconst count = $input.all().filter(i => i.json && i.json.id).length;\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ Deleted ${count} reminder(s). All your reminders have been cleared.` } }];"
+      }
+    },
+    {
+      "id": "fmt_prompt13",
+      "name": "Format Confirm Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        480
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Reminder Input\").first().json;\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Are you sure you want to delete all your reminders? This cannot be undone.\\n\\nReply with \\\"CONFIRM DELETE ALL REMINDERS\\\" to proceed.\" } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Reminder Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Reminder Input": {
+      "main": [
+        [
+          {
+            "node": "Route Reminder Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Reminder Command": {
+      "main": [
+        [
+          {
+            "node": "Insert Standalone Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Standalone Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Standalone Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Confirm Delete All",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Standalone Reminder": {
+      "main": [
+        [
+          {
+            "node": "Format Create Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Standalone Reminders": {
+      "main": [
+        [
+          {
+            "node": "Format Reminders List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Standalone Reminder": {
+      "main": [
+        [
+          {
+            "node": "Format Delete Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Confirm Delete All": {
+      "main": [
+        [
+          {
+            "node": "Delete All Reminders Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Confirm Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete All Reminders Query": {
+      "main": [
+        [
+          {
+            "node": "Format Delete All Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

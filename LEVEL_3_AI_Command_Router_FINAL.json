@@ -204,7 +204,7 @@
   },
   {
    "parameters": {
-    "jsCode": "const j = $('Should Save Pending').first().json;\nconst FIELD_QUESTIONS = {\n  business_name: \"What's the business name?\",\n  service: 'What service is this lead interested in?',\n  deal_value: \"What's the expected deal value? (e.g. \\u20b930,000)\",\n  status: 'What status should I set it to? (e.g. Contacted, Proposal Sent, Won, Lost)',\n  notes: 'What note would you like to add?',\n  content: 'What would you like to note down?',\n  follow_up_date: 'When should I remind you? (e.g. tomorrow 10am)'\n};\nlet text;\nif (j.systemError) {\n  text = \"\\u26a0\\ufe0f I couldn't reach the AI service. Please try again in a moment.\";\n} else if (j.command === 'AMBIGUOUS_DELETE') {\n  const bName = (j.parameters && j.parameters.business_name) ? j.parameters.business_name : 'this';\n  text = `\\u26a0\\ufe0f Do you want to delete the lead \"${bName}\", its follow-up, or both?\\n\\n\\u2022 \"delete lead ${bName}\"\\n\\u2022 \"delete followup for ${bName}\"`;\n} else if (j.command === 'UNKNOWN') {\n  text = \"\\ud83e\\udd14 I didn't understand that. Try something like:\\n\\u2022 \\\"Add ABC School as a \\u20b925,000 website lead\\\"\\n\\u2022 \\\"Show my active leads\\\"\\n\\u2022 \\\"Move ABC School to proposal\\\"\";\n} else if (j.missing && j.missing.length) {\n  const field = j.missing[0];\n  text = FIELD_QUESTIONS[field] || `I still need: ${field}. Could you send that?`;\n} else {\n  text = \"\\u26a0\\ufe0f I'm not confident I understood that correctly. Could you rephrase?\";\n}\nreturn [{ json: { chatId: j.chatId, text } }];"
+    "jsCode": "const j = $('Should Save Pending').first().json;\nconst FIELD_QUESTIONS = {\n  business_name: \"What's the business name?\",\n  service: 'What service is this lead interested in?',\n  deal_value: \"What's the expected deal value? (e.g. \\u20b930,000)\",\n  status: 'What status should I set it to? (e.g. Contacted, Proposal Sent, Won, Lost)',\n  notes: 'What note would you like to add?',\n  content: 'What note would you like to save?',\n  follow_up_date: 'When should I remind you? (e.g. tomorrow 10am)',\n  reminder_text: 'What should I remind you about?',\n  task_name: 'What task would you like to add?',\n  tasks: 'What tasks would you like to add?',\n  note_id: 'Which note ID?',\n  reminder_id: 'Which reminder ID?',\n  task_id: 'Which task ID?'\n};\nlet text;\nif (j.systemError) {\n  text = \"\\u26a0\\ufe0f I couldn't reach the AI service. Please try again in a moment.\";\n} else if (j.command === 'AMBIGUOUS_DELETE') {\n  const bName = (j.parameters && j.parameters.business_name) ? j.parameters.business_name : 'this';\n  text = `\\u26a0\\ufe0f Do you want to delete the lead \"${bName}\", its follow-up, or both?\\n\\n\\u2022 \"delete lead ${bName}\"\\n\\u2022 \"delete followup for ${bName}\"`;\n} else if (j.command === 'UNKNOWN') {\n  text = \"\\ud83e\\udd14 I didn't understand that. Try something like:\\n\\u2022 \\\"Add ABC School as a \\u20b925,000 website lead\\\"\\n\\u2022 \\\"Show my active leads\\\"\\n\\u2022 \\\"Move ABC School to proposal\\\"\\n\\u2022 \\\"Note down this:\\\"\\n\\u2022 \\\"Remind me on Monday to follow up\\\"\\n\\u2022 \\\"Tasks for today:\\\"\";\n} else if (j.missing && j.missing.length) {\n  const field = j.missing[0];\n  text = FIELD_QUESTIONS[field] || `I still need: ${field}. Could you send that?`;\n} else {\n  text = \"\\u26a0\\ufe0f I'm not confident I understood that correctly. Could you rephrase?\";\n}\nreturn [{ json: { chatId: j.chatId, text } }];"
    },
    "id": "cc0bfeff-d165-4cbc-b312-7b2e90b5d27a",
    "name": "Build Clarification Message",
@@ -242,8 +242,8 @@
   {
    "parameters": {
     "mode": "expression",
-    "output": "={{ ['ADD_LEAD','LIST_LEADS','GET_LEAD','UPDATE_LEAD','CHANGE_STATUS','UPDATE_DEAL_VALUE','DELETE_LEAD','DELETE_ALL_LEADS','DELETE_EVERYTHING'].includes($json.command) ? 0 : (['RECORD_INTERACTION','ADD_NOTE','GET_LEAD_HISTORY','DELETE_ALL_INTERACTIONS'].includes($json.command) ? 1 : (['CREATE_FOLLOW_UP','COMPLETE_FOLLOW_UP','UPDATE_FOLLOW_UP','CANCEL_FOLLOW_UP','LIST_FOLLOW_UPS','DELETE_FOLLOW_UP','DELETE_ALL_FOLLOWUPS'].includes($json.command) ? 2 : ($json.command === 'DAILY_PRIORITY' ? 3 : (['PIPELINE_ANALYTICS','REVENUE_ANALYTICS','LEAD_ANALYTICS'].includes($json.command) ? 4 : 5)))) }}",
-    "numberOutputs": 6
+    "output": "={{ ['ADD_LEAD','LIST_LEADS','GET_LEAD','UPDATE_LEAD','CHANGE_STATUS','UPDATE_DEAL_VALUE','DELETE_LEAD','DELETE_ALL_LEADS','DELETE_EVERYTHING'].includes($json.command) ? 0 : (['RECORD_INTERACTION','ADD_NOTE','GET_LEAD_HISTORY','DELETE_ALL_INTERACTIONS'].includes($json.command) ? 1 : (['CREATE_FOLLOW_UP','COMPLETE_FOLLOW_UP','UPDATE_FOLLOW_UP','CANCEL_FOLLOW_UP','LIST_FOLLOW_UPS','DELETE_FOLLOW_UP','DELETE_ALL_FOLLOWUPS'].includes($json.command) ? 2 : ($json.command === 'DAILY_PRIORITY' ? 3 : (['PIPELINE_ANALYTICS','REVENUE_ANALYTICS','LEAD_ANALYTICS'].includes($json.command) ? 4 : (['ADD_STANDALONE_NOTE','LIST_STANDALONE_NOTES','DELETE_STANDALONE_NOTE','DELETE_ALL_STANDALONE_NOTES'].includes($json.command) ? 5 : (['CREATE_REMINDER','LIST_REMINDERS','DELETE_REMINDER','DELETE_ALL_REMINDERS'].includes($json.command) ? 6 : (['CREATE_DAILY_TASKS','LIST_TASKS','ADD_TASK','UPDATE_TASK','COMPLETE_TASK','DELETE_TASK','DELETE_ALL_TASKS'].includes($json.command) ? 7 : 8))))))) }}",
+    "numberOutputs": 9
    },
    "id": "f2e0408a-195d-48d4-a5df-2dde857ee5d4",
    "name": "Route Command",
@@ -377,6 +377,84 @@
    ]
   },
   {
+   "parameters": {
+    "workflowId": {
+     "value": "LEVEL_12_Standalone_Notes",
+     "mode": "list"
+    },
+    "workflowInputs": {
+     "value": {
+      "command": "={{$json.command}}",
+      "parameters": "={{$json.parameters}}",
+      "chatId": "={{$json.chatId}}",
+      "userId": "={{$json.userId}}",
+      "text": "={{$json.text}}"
+     }
+    },
+    "options": {}
+   },
+   "id": "execute_standalone_notes",
+   "name": "Execute Standalone Notes",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
+   "position": [
+    672,
+    848
+   ]
+  },
+  {
+   "parameters": {
+    "workflowId": {
+     "value": "LEVEL_13_Standalone_Reminders",
+     "mode": "list"
+    },
+    "workflowInputs": {
+     "value": {
+      "command": "={{$json.command}}",
+      "parameters": "={{$json.parameters}}",
+      "chatId": "={{$json.chatId}}",
+      "userId": "={{$json.userId}}",
+      "text": "={{$json.text}}"
+     }
+    },
+    "options": {}
+   },
+   "id": "execute_standalone_reminders",
+   "name": "Execute Standalone Reminders",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
+   "position": [
+    672,
+    928
+   ]
+  },
+  {
+   "parameters": {
+    "workflowId": {
+     "value": "LEVEL_14_Personal_Daily_Tasks",
+     "mode": "list"
+    },
+    "workflowInputs": {
+     "value": {
+      "command": "={{$json.command}}",
+      "parameters": "={{$json.parameters}}",
+      "chatId": "={{$json.chatId}}",
+      "userId": "={{$json.userId}}",
+      "text": "={{$json.text}}"
+     }
+    },
+    "options": {}
+   },
+   "id": "execute_personal_daily_tasks",
+   "name": "Execute Personal Daily Tasks",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
+   "position": [
+    672,
+    1008
+   ]
+  },
+  {
    "parameters": {},
    "id": "00796a98-76a7-4044-9e9a-530618cf2ea7",
    "name": "Fallback Unknown",
@@ -384,7 +462,7 @@
    "typeVersion": 1,
    "position": [
     672,
-    848
+    1088
    ]
   },
   {
@@ -494,7 +572,7 @@
    ],
    "parameters": {
     "language": "javaScript",
-    "jsCode": "const trig = $json;\nconst text = `\\ud83e\\udd16 <b>FREELANCE ASSISTANT</b>\\n\\nJust tell me what you need \\u2014 no commands to remember.\\n\\n\\ud83d\\udc65 <b>Leads</b>\\n\\u2022 Add CBS School as a lead\\n\\u2022 Show my leads / active leads\\n\\u2022 Tell me about CBS School\\n\\u2022 Change CBS School to proposal sent\\n\\n\\ud83d\\udcac <b>Interactions</b>\\n\\u2022 I spoke to CBS School today\\n\\u2022 Add a note that CBS wants the website next month\\n\\u2022 Show my history with CBS School\\n\\n\\ud83d\\udd14 <b>Follow-ups</b>\\n\\u2022 Remind me to call CBS tomorrow at 10 AM\\n\\u2022 Move my CBS follow-up to 2 PM\\n\\u2022 Cancel the CBS follow-up\\n\\u2022 Show my overdue follow-ups\\n\\n\\ud83d\\udcc5 <b>Daily / Analytics</b>\\n\\u2022 What should I do today?\\n\\u2022 Show my pipeline\\n\\u2022 Show my revenue this month`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
+    "jsCode": "const trig = $json;\nconst text = `\\ud83e\\udd16 <b>FREELANCE ASSISTANT</b>\\n\\nJust tell me what you need \\u2014 no commands to remember.\\n\\n\\ud83d\\udc65 <b>Leads</b>\\n\\u2022 Add CBS School as a lead\\n\\u2022 Show my leads / active leads\\n\\u2022 Tell me about CBS School\\n\\u2022 Change CBS School to proposal sent\\n\\n\\ud83d\\udcac <b>Interactions</b>\\n\\u2022 I spoke to CBS School today\\n\\u2022 Add a note that CBS wants the website next month\\n\\u2022 Show my history with CBS School\\n\\n\\ud83d\\udd14 <b>Follow-ups & Reminders</b>\\n\\u2022 Remind me to call CBS tomorrow at 10 AM\\n\\u2022 Remind me on Monday to follow up\\n\\u2022 Show my reminders\\n\\n\\ud83d\\udcdd <b>Notes</b>\\n\\u2022 Note down this:\\n\\u2022 Show my notes\\n\\u2022 Delete note 1\\n\\n\\u2705 <b>Personal Tasks</b>\\n\\u2022 Tasks for tomorrow:\\n\\u2022 Add task: Review proposal\\n\\u2022 Show my tasks\\n\\u2022 Complete task 1\\n\\n\\ud83d\\udcc5 <b>Daily / Analytics</b>\\n\\u2022 What should I do today?\\n\\u2022 Show my pipeline\\n\\u2022 Show my revenue this month`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
    }
   },
   {
@@ -713,7 +791,7 @@
    ],
    "parameters": {
     "language": "javaScript",
-     "jsCode": "const STATUS_ALIASES = {\n  'PROPOSAL': 'PROPOSAL_SENT', 'PROPOSAL SENT': 'PROPOSAL_SENT', 'SENT PROPOSAL': 'PROPOSAL_SENT',\n  'SEND PROPOSAL': 'PROPOSAL_SENT', 'CONTACT': 'CONTACTED', 'REPLY': 'REPLIED', 'REPLIED TO': 'REPLIED',\n  'QUALIFY': 'QUALIFIED', 'NEGOTIATE': 'NEGOTIATION', 'NEGOTIATING': 'NEGOTIATION', 'WIN': 'WON',\n  'CLOSED WON': 'WON', 'LOSE': 'LOST', 'CLOSED LOST': 'LOST', 'NEW LEAD': 'NEW'\n};\nconst ALLOWED_STATUS = ['NEW','CONTACTED','REPLIED','QUALIFIED','PROPOSAL_SENT','NEGOTIATION','WON','LOST'];\nconst REQUIRED = {\n  ADD_LEAD: ['business_name'], LIST_LEADS: [], GET_LEAD: ['business_name'], UPDATE_LEAD: ['business_name'],\n  CHANGE_STATUS: ['business_name', 'status'], UPDATE_DEAL_VALUE: ['business_name', 'deal_value'],\n  DELETE_LEAD: ['business_name'], DELETE_ALL_LEADS: [], DELETE_EVERYTHING: [],\n  RECORD_INTERACTION: ['business_name'], ADD_NOTE: ['business_name', 'notes'], GET_LEAD_HISTORY: ['business_name'],\n  DELETE_ALL_INTERACTIONS: [],\n  CREATE_FOLLOW_UP: ['business_name'], COMPLETE_FOLLOW_UP: ['business_name'],\n  UPDATE_FOLLOW_UP: ['business_name'], CANCEL_FOLLOW_UP: ['business_name'], DELETE_FOLLOW_UP: ['business_name'], LIST_FOLLOW_UPS: [], DELETE_ALL_FOLLOWUPS: [],\n  AMBIGUOUS_DELETE: ['business_name'],\n  DAILY_PRIORITY: [], PIPELINE_ANALYTICS: [], REVENUE_ANALYTICS: [], LEAD_ANALYTICS: [], UNKNOWN: []\n};\n\nconst trig = $('Restore Context').first().json;\nconst pending = $json;\nlet parameters = typeof pending.parameters === 'string' ? JSON.parse(pending.parameters || '{}') : (pending.parameters || {});\nconst missingList = typeof pending.missing === 'string' ? JSON.parse(pending.missing || '[]') : (pending.missing || []);\nconst field = missingList[0];\nlet value = (trig.text || '').trim();\n\nif (field === 'deal_value') {\n  const v = Number(value.replace(/[^0-9.\\-]/g, ''));\n  if (!isNaN(v)) parameters.deal_value = v;\n} else if (field === 'status') {\n  let s = value.toUpperCase().trim();\n  if (STATUS_ALIASES[s]) s = STATUS_ALIASES[s];\n  if (ALLOWED_STATUS.includes(s)) parameters.status = s;\n} else if (field) {\n  parameters[field] = value;\n}\n\nconst missing = (REQUIRED[pending.command] || []).filter(f => parameters[f] === undefined || parameters[f] === null || parameters[f] === '');\n\nreturn [{ json: { chatId: trig.chatId, userId: trig.userId, command: pending.command, confidence: 1, parameters, missing, systemError: false } }];"
+    "jsCode": "const STATUS_ALIASES = {\n  'PROPOSAL': 'PROPOSAL_SENT', 'PROPOSAL SENT': 'PROPOSAL_SENT', 'SENT PROPOSAL': 'PROPOSAL_SENT',\n  'SEND PROPOSAL': 'PROPOSAL_SENT', 'CONTACT': 'CONTACTED', 'REPLY': 'REPLIED', 'REPLIED TO': 'REPLIED',\n  'QUALIFY': 'QUALIFIED', 'NEGOTIATE': 'NEGOTIATION', 'NEGOTIATING': 'NEGOTIATION', 'WIN': 'WON',\n  'CLOSED WON': 'WON', 'LOSE': 'LOST', 'CLOSED LOST': 'LOST', 'NEW LEAD': 'NEW'\n};\nconst ALLOWED_STATUS = ['NEW','CONTACTED','REPLIED','QUALIFIED','PROPOSAL_SENT','NEGOTIATION','WON','LOST'];\nconst REQUIRED = {\n  ADD_LEAD: ['business_name'], LIST_LEADS: [], GET_LEAD: ['business_name'], UPDATE_LEAD: ['business_name'],\n  CHANGE_STATUS: ['business_name', 'status'], UPDATE_DEAL_VALUE: ['business_name', 'deal_value'],\n  DELETE_LEAD: ['business_name'], DELETE_ALL_LEADS: [], DELETE_EVERYTHING: [],\n  RECORD_INTERACTION: ['business_name'], ADD_NOTE: ['business_name', 'notes'], GET_LEAD_HISTORY: ['business_name'],\n  DELETE_ALL_INTERACTIONS: [],\n  CREATE_FOLLOW_UP: ['business_name'], COMPLETE_FOLLOW_UP: ['business_name'],\n  UPDATE_FOLLOW_UP: ['business_name'], CANCEL_FOLLOW_UP: ['business_name'], DELETE_FOLLOW_UP: ['business_name'], LIST_FOLLOW_UPS: [], DELETE_ALL_FOLLOWUPS: [],\n  AMBIGUOUS_DELETE: ['business_name'],\n  DAILY_PRIORITY: [], PIPELINE_ANALYTICS: [], REVENUE_ANALYTICS: [], LEAD_ANALYTICS: [],\n  ADD_STANDALONE_NOTE: ['content'], LIST_STANDALONE_NOTES: [], DELETE_STANDALONE_NOTE: ['note_id'], DELETE_ALL_STANDALONE_NOTES: [],\n  CREATE_REMINDER: ['reminder_text', 'follow_up_date'], LIST_REMINDERS: [], DELETE_REMINDER: ['reminder_id'], DELETE_ALL_REMINDERS: [],\n  CREATE_DAILY_TASKS: ['tasks'], LIST_TASKS: [], ADD_TASK: ['task_name'], UPDATE_TASK: ['task_id'], COMPLETE_TASK: ['task_id'], DELETE_TASK: ['task_id'], DELETE_ALL_TASKS: [],\n  UNKNOWN: []\n};\n\nconst trig = $('Restore Context').first().json;\nconst pending = $json;\nlet parameters = typeof pending.parameters === 'string' ? JSON.parse(pending.parameters || '{}') : (pending.parameters || {});\nconst missingList = typeof pending.missing === 'string' ? JSON.parse(pending.missing || '[]') : (pending.missing || []);\nconst field = missingList[0];\nlet value = (trig.text || '').trim();\n\nif (field === 'deal_value') {\n  const v = Number(value.replace(/[^0-9.\\-]/g, ''));\n  if (!isNaN(v)) parameters.deal_value = v;\n} else if (field === 'status') {\n  let s = value.toUpperCase().trim();\n  if (STATUS_ALIASES[s]) s = STATUS_ALIASES[s];\n  if (ALLOWED_STATUS.includes(s)) parameters.status = s;\n} else if (field === 'tasks' && typeof value === 'string') {\n  parameters.tasks = value.split('\\n').map(t => t.trim().replace(/^[-*•0-9.)\\s]+/, '')).filter(Boolean);\n} else if (field) {\n  parameters[field] = value;\n}\n\nconst missing = (REQUIRED[pending.command] || []).filter(f => {\n  const val = parameters[f];\n  if (val === undefined || val === null || val === '') return true;\n  if (Array.isArray(val) && val.length === 0) return true;\n  return false;\n});\n\nreturn [{ json: { chatId: trig.chatId, userId: trig.userId, command: pending.command, confidence: 1, parameters, missing, systemError: false } }];"
    }
   },
   {
@@ -969,117 +1047,171 @@
    ]
   },
   "Route Command": {
-   "main": [
-    [
-     {
-      "node": "Execute Lead Management",
-      "type": "main",
-      "index": 0
-     }
-    ],
-    [
-     {
-      "node": "Execute Interaction History",
-      "type": "main",
-      "index": 0
-     }
-    ],
-    [
-     {
-      "node": "Execute Followup Management",
-      "type": "main",
-      "index": 0
-     }
-    ],
-    [
-     {
-      "node": "Execute Daily Priorities",
-      "type": "main",
-      "index": 0
-     }
-    ],
-    [
-     {
-      "node": "Execute Analytics",
-      "type": "main",
-      "index": 0
-     }
-    ],
-    [
-     {
-      "node": "Fallback Unknown",
-      "type": "main",
-      "index": 0
-     }
+    "main": [
+     [
+      {
+       "node": "Execute Lead Management",
+       "type": "main",
+       "index": 0
+      }
+     ],
+     [
+      {
+       "node": "Execute Interaction History",
+       "type": "main",
+       "index": 0
+      }
+     ],
+     [
+      {
+       "node": "Execute Followup Management",
+       "type": "main",
+       "index": 0
+      }
+     ],
+     [
+      {
+       "node": "Execute Daily Priorities",
+       "type": "main",
+       "index": 0
+      }
+     ],
+     [
+      {
+       "node": "Execute Analytics",
+       "type": "main",
+       "index": 0
+      }
+     ],
+     [
+      {
+       "node": "Execute Standalone Notes",
+       "type": "main",
+       "index": 0
+      }
+     ],
+     [
+      {
+       "node": "Execute Standalone Reminders",
+       "type": "main",
+       "index": 0
+      }
+     ],
+     [
+      {
+       "node": "Execute Personal Daily Tasks",
+       "type": "main",
+       "index": 0
+      }
+     ],
+     [
+      {
+       "node": "Fallback Unknown",
+       "type": "main",
+       "index": 0
+      }
+     ]
     ]
-   ]
-  },
-  "Execute Lead Management": {
-   "main": [
-    [
-     {
-      "node": "Normalize Result",
-      "type": "main",
-      "index": 0
-     }
+   },
+   "Execute Lead Management": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
     ]
-   ]
-  },
-  "Execute Interaction History": {
-   "main": [
-    [
-     {
-      "node": "Normalize Result",
-      "type": "main",
-      "index": 0
-     }
+   },
+   "Execute Interaction History": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
     ]
-   ]
-  },
-  "Execute Followup Management": {
-   "main": [
-    [
-     {
-      "node": "Normalize Result",
-      "type": "main",
-      "index": 0
-     }
+   },
+   "Execute Followup Management": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
     ]
-   ]
-  },
-  "Execute Daily Priorities": {
-   "main": [
-    [
-     {
-      "node": "Normalize Result",
-      "type": "main",
-      "index": 0
-     }
+   },
+   "Execute Daily Priorities": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
     ]
-   ]
-  },
-  "Execute Analytics": {
-   "main": [
-    [
-     {
-      "node": "Normalize Result",
-      "type": "main",
-      "index": 0
-     }
+   },
+   "Execute Analytics": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
     ]
-   ]
-  },
-  "Fallback Unknown": {
-   "main": [
-    [
-     {
-      "node": "Normalize Result",
-      "type": "main",
-      "index": 0
-     }
+   },
+   "Execute Standalone Notes": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
     ]
-   ]
-  },
+   },
+   "Execute Standalone Reminders": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
+    ]
+   },
+   "Execute Personal Daily Tasks": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
+    ]
+   },
+   "Fallback Unknown": {
+    "main": [
+     [
+      {
+       "node": "Normalize Result",
+       "type": "main",
+       "index": 0
+      }
+     ]
+    ]
+   },
   "Has Response Text": {
    "main": [
     [

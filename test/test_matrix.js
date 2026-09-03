@@ -1128,6 +1128,576 @@ const testMatrix = [
       const fuRows = db.query("SELECT * FROM follow_ups WHERE lead_id = (SELECT id FROM leads WHERE business_name = 'Makeup Academy') AND status = 'PENDING'");
       if (fuRows.length !== 0) throw new Error('Pending follow-up should no longer be PENDING');
     }
+  },
+
+  // =========================================================================
+  // 13. Standalone Notes (LEVEL_12)
+  // =========================================================================
+  {
+    id: 'TEST-057',
+    category: 'Standalone Notes',
+    message: 'note down check out Tailwind CSS v4',
+    description: 'Add simple standalone note -> creates exactly one note in standalone_notes',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> Insert Standalone Note -> Format Add Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Note saved')) {
+        throw new Error(`Expected note saved confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM standalone_notes WHERE user_id = ?', ['987654321']);
+      if (rows.length !== 1) throw new Error(`Expected 1 standalone note, found ${rows.length}`);
+      if (!rows[0].content.includes('Tailwind CSS v4')) throw new Error(`Unexpected note content: ${rows[0].content}`);
+    }
+  },
+  {
+    id: 'TEST-058',
+    category: 'Standalone Notes',
+    message: 'note down this\n\nfollow up for monday\ncbs school\nvk photography\nmghs school',
+    description: 'Add multiline standalone note -> creates exactly ONE note preserving line breaks',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> Insert Standalone Note -> Format Add Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Note saved')) {
+        throw new Error(`Expected note saved confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM standalone_notes WHERE user_id = ?', ['987654321']);
+      if (rows.length !== 1) throw new Error(`Expected exactly 1 note, found ${rows.length}`);
+      const content = rows[0].content;
+      if (!content.includes('follow up for monday') || !content.includes('cbs school') || !content.includes('vk photography') || !content.includes('mghs school')) {
+        throw new Error(`Note content did not preserve all multiline items: ${content}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-059',
+    category: 'Standalone Notes',
+    message: 'show my notes',
+    description: 'List standalone notes -> numbered list for current user',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_notes (user_id, content) VALUES ('987654321', 'Note item 1')");
+      db.query("INSERT INTO standalone_notes (user_id, content) VALUES ('987654321', 'Note item 2')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> Query Standalone Notes -> Format Notes List',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('YOUR NOTES') || !msg.text.includes('Note item 1') || !msg.text.includes('Note item 2')) {
+        throw new Error(`Expected formatted notes list, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-060',
+    category: 'Standalone Notes',
+    message: 'delete note 1',
+    description: 'Delete one standalone note -> removes note and returns confirmation',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_notes (id, user_id, content) VALUES (1, '987654321', 'To be deleted')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> Delete Standalone Note -> Format Delete Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('deleted')) {
+        throw new Error(`Expected delete confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM standalone_notes WHERE id = 1');
+      if (rows.length !== 0) throw new Error('Note was not deleted from database');
+    }
+  },
+  {
+    id: 'TEST-061',
+    category: 'Standalone Notes',
+    message: 'delete note 9999',
+    description: 'Attempt deletion with non-existent note ID -> returns not found message',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> Delete Standalone Note -> Format Delete Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('not found')) {
+        throw new Error(`Expected note not found message, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-062',
+    category: 'Standalone Notes',
+    message: 'delete note 1',
+    description: 'User isolation -> user cannot delete a note belonging to another user',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_notes (id, user_id, content) VALUES (1, 'OTHER_USER_777', 'Private Note')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> Delete Standalone Note -> Format Delete Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('not found')) {
+        throw new Error(`Expected note not found / unauthorized message, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM standalone_notes WHERE id = 1 AND user_id = 'OTHER_USER_777'");
+      if (rows.length !== 1) throw new Error('Other user note should remain untouched in database');
+    }
+  },
+  {
+    id: 'TEST-063',
+    category: 'Standalone Notes',
+    message: 'delete all notes',
+    description: 'Delete all notes unconfirmed -> prompts for confirmation',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_notes (user_id, content) VALUES ('987654321', 'Note A')");
+      db.query("INSERT INTO standalone_notes (user_id, content) VALUES ('987654321', 'Note B')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> Check Confirm Delete All -> Format Confirm Prompt',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('CONFIRM DELETE ALL NOTES')) {
+        throw new Error(`Expected confirmation prompt, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM standalone_notes WHERE user_id = '987654321'");
+      if (rows.length !== 2) throw new Error('Notes must not be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-064',
+    category: 'Standalone Notes',
+    message: 'CONFIRM DELETE ALL NOTES',
+    description: 'Delete all notes confirmed -> removes only current user notes',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_notes (user_id, content) VALUES ('987654321', 'User 1 Note')");
+      db.query("INSERT INTO standalone_notes (user_id, content) VALUES ('OTHER_USER', 'User 2 Note')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> Delete All Notes Query -> Format Delete All Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('cleared') && !msg.text.includes('Deleted')) {
+        throw new Error(`Expected delete all confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const userRows = db.query("SELECT * FROM standalone_notes WHERE user_id = '987654321'");
+      if (userRows.length !== 0) throw new Error('Current user notes should be deleted');
+      const otherRows = db.query("SELECT * FROM standalone_notes WHERE user_id = 'OTHER_USER'");
+      if (otherRows.length !== 1) throw new Error('Other user notes should be preserved');
+    }
+  },
+
+  // =========================================================================
+  // 14. Standalone Reminders (LEVEL_13)
+  // =========================================================================
+  {
+    id: 'TEST-065',
+    category: 'Standalone Reminders',
+    message: 'remind me tomorrow to submit invoice',
+    description: 'Create personal reminder -> creates record in standalone_reminders',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Format Create Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Reminder set')) {
+        throw new Error(`Expected reminder set confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM standalone_reminders WHERE user_id = '987654321'");
+      if (rows.length !== 1) throw new Error(`Expected 1 reminder, found ${rows.length}`);
+      if (!rows[0].content.includes('submit invoice')) throw new Error(`Unexpected reminder content: ${rows[0].content}`);
+    }
+  },
+  {
+    id: 'TEST-066',
+    category: 'Standalone Reminders',
+    message: 'remind me on monday to follow up with Vivek School',
+    description: 'Create reminder with business name not in leads table -> succeeds as personal reminder',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Format Create Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Reminder set') || !msg.text.includes('Vivek School')) {
+        throw new Error(`Expected reminder set with Vivek School, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM standalone_reminders WHERE user_id = '987654321'");
+      if (rows.length !== 1) throw new Error(`Expected 1 reminder, found ${rows.length}`);
+      // Ensure leads table is untouched
+      const leadRows = db.query("SELECT * FROM leads WHERE business_name LIKE '%Vivek%'");
+      if (leadRows.length !== 0) throw new Error('Personal reminder should not create a lead in CRM');
+    }
+  },
+  {
+    id: 'TEST-067',
+    category: 'Standalone Reminders',
+    message: 'show my reminders',
+    description: 'List reminders -> shows formatted list of active reminders',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status) VALUES ('987654321', '987654321', 'Pay server bill', '2026-09-10T10:00:00Z', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Query Standalone Reminders -> Format Reminders List',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('YOUR REMINDERS') || !msg.text.includes('Pay server bill')) {
+        throw new Error(`Expected reminders list, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-068',
+    category: 'Standalone Reminders',
+    message: 'delete reminder 1',
+    description: 'Delete one reminder -> removes reminder and confirms',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_reminders (id, user_id, chat_id, content, reminder_at, status) VALUES (1, '987654321', '987654321', 'Delete me', '2026-09-10T10:00:00Z', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('deleted')) {
+        throw new Error(`Expected delete confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM standalone_reminders WHERE id = 1');
+      if (rows.length !== 0) throw new Error('Reminder should be deleted from database');
+    }
+  },
+  {
+    id: 'TEST-069',
+    category: 'Standalone Reminders',
+    message: 'delete reminder 9999',
+    description: 'Attempt invalid reminder deletion -> returns not found message',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('not found')) {
+        throw new Error(`Expected reminder not found message, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-070',
+    category: 'Standalone Reminders',
+    message: 'delete reminder 1',
+    description: 'User isolation -> cannot delete reminder belonging to another user',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_reminders (id, user_id, chat_id, content, reminder_at, status) VALUES (1, 'OTHER_USER_999', '11111', 'Private reminder', '2026-09-10T10:00:00Z', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('not found')) {
+        throw new Error(`Expected not found / unauthorized, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM standalone_reminders WHERE id = 1 AND user_id = 'OTHER_USER_999'");
+      if (rows.length !== 1) throw new Error('Other user reminder should remain in database');
+    }
+  },
+  {
+    id: 'TEST-071',
+    category: 'Standalone Reminders',
+    message: 'delete all reminders',
+    description: 'Delete all reminders unconfirmed -> prompts for confirmation',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status) VALUES ('987654321', '987654321', 'R1', '2026-09-10T10:00:00Z', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Check Confirm Delete All -> Format Confirm Prompt',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('CONFIRM DELETE ALL REMINDERS')) {
+        throw new Error(`Expected confirmation prompt, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM standalone_reminders WHERE user_id = '987654321'");
+      if (rows.length !== 1) throw new Error('Reminders should not be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-072',
+    category: 'Standalone Reminders',
+    message: 'CONFIRM DELETE ALL REMINDERS',
+    description: 'Delete all reminders confirmed -> removes only current user reminders',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status) VALUES ('987654321', '987654321', 'R1', '2026-09-10T10:00:00Z', 'PENDING')");
+      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status) VALUES ('OTHER_USER', '22222', 'R2', '2026-09-10T10:00:00Z', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Delete All Reminders Query -> Format Delete All Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('cleared') && !msg.text.includes('Deleted')) {
+        throw new Error(`Expected delete all confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const userRows = db.query("SELECT * FROM standalone_reminders WHERE user_id = '987654321'");
+      if (userRows.length !== 0) throw new Error('Current user reminders should be deleted');
+      const otherRows = db.query("SELECT * FROM standalone_reminders WHERE user_id = 'OTHER_USER'");
+      if (otherRows.length !== 1) throw new Error('Other user reminders should be preserved');
+    }
+  },
+  {
+    id: 'TEST-073',
+    category: 'Standalone Reminders',
+    message: 'Schedule Trigger (LEVEL_13_Reminder_Scheduler)',
+    description: 'Scheduled reminder check -> sends notification and marks notified to prevent duplicates',
+    workflow: 'LEVEL_13_Reminder_Scheduler',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_reminders (id, user_id, chat_id, content, reminder_at, status) VALUES (10, '987654321', '987654321', 'Follow up with Vivek School', datetime('now', '-10 minutes'), 'PENDING')");
+    },
+    expectedRoute: 'Schedule Trigger -> Get Due Reminders -> Any Due -> Build Reminder Notification -> Send Reminder Message -> Mark Reminder Notified',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('REMINDER') || !msg.text.includes('Follow up with Vivek School')) {
+        throw new Error(`Expected reminder notification, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM standalone_reminders WHERE id = 10');
+      if (rows[0].status !== 'COMPLETED' && !rows[0].notified_at) {
+        throw new Error('Reminder should be marked notified/completed to prevent duplicate send');
+      }
+    }
+  },
+
+  // =========================================================================
+  // 15. Personal Daily Tasks (LEVEL_14)
+  // =========================================================================
+  {
+    id: 'TEST-074',
+    category: 'Personal Daily Tasks',
+    message: 'tasks for Sep 5\n\nDSA\nDo n8n project\nComplete website',
+    description: 'Create multi-item tasks for future date -> creates 3 separate records for 2026-09-05',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Bulk Insert Tasks -> Format Bulk Add Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('task(s) saved for 2026-09-05')) {
+        throw new Error(`Expected 3 tasks saved confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM personal_daily_tasks WHERE user_id = '987654321' AND task_date = '2026-09-05' ORDER BY id ASC");
+      if (rows.length !== 3) throw new Error(`Expected 3 task records, found ${rows.length}`);
+      if (rows[0].content !== 'DSA' || rows[1].content !== 'Do n8n project' || rows[2].content !== 'Complete website') {
+        throw new Error(`Unexpected task contents: ${JSON.stringify(rows)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-075',
+    category: 'Personal Daily Tasks',
+    message: "show today's tasks",
+    description: "List tasks for today -> returns formatted numbered list",
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, status) VALUES ('987654321', '987654321', '2026-09-03', 'Morning Yoga', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Query Tasks -> Format Tasks List',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('TASKS FOR 2026-09-03') || !msg.text.includes('Morning Yoga')) {
+        throw new Error(`Expected tasks list for today, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-076',
+    category: 'Personal Daily Tasks',
+    message: 'show tasks for Sep 5',
+    description: 'List tasks for future date -> returns tasks for 2026-09-05',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, status) VALUES ('987654321', '987654321', '2026-09-05', 'Design System', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Query Tasks -> Format Tasks List',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('TASKS FOR 2026-09-05') || !msg.text.includes('Design System')) {
+        throw new Error(`Expected future tasks list, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-077',
+    category: 'Personal Daily Tasks',
+    message: 'add task for Sep 5: Review website',
+    description: 'Add single task for a date -> creates record in personal_daily_tasks',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Insert Single Task -> Format Single Add Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Task added') || !msg.text.includes('Review website')) {
+        throw new Error(`Expected task added confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM personal_daily_tasks WHERE user_id = '987654321' AND task_date = '2026-09-05'");
+      if (rows.length !== 1) throw new Error(`Expected 1 task for Sep 5, found ${rows.length}`);
+    }
+  },
+  {
+    id: 'TEST-078',
+    category: 'Personal Daily Tasks',
+    message: 'update task 2 to Complete CBS website',
+    description: 'Update task content -> modifies record where id and user_id match',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, status) VALUES (2, '987654321', '987654321', '2026-09-03', 'Old Task Content', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Update Task Query -> Format Update Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('updated') || !msg.text.includes('Complete CBS website')) {
+        throw new Error(`Expected update confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM personal_daily_tasks WHERE id = 2');
+      if (rows[0].content !== 'Complete CBS website') throw new Error(`Task content was not updated: ${rows[0].content}`);
+    }
+  },
+  {
+    id: 'TEST-079',
+    category: 'Personal Daily Tasks',
+    message: 'complete task 2',
+    description: 'Complete task -> marks status as COMPLETED',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, status) VALUES (2, '987654321', '987654321', '2026-09-03', 'Deploy app', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Complete Task Query -> Format Complete Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('completed')) {
+        throw new Error(`Expected completion confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM personal_daily_tasks WHERE id = 2');
+      if (rows[0].status !== 'COMPLETED') throw new Error(`Expected status COMPLETED, got: ${rows[0].status}`);
+    }
+  },
+  {
+    id: 'TEST-080',
+    category: 'Personal Daily Tasks',
+    message: 'delete task 2',
+    description: 'Delete task -> removes task where id and user_id match',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, status) VALUES (2, '987654321', '987654321', '2026-09-03', 'Trash me', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Delete Task Query -> Format Delete Task Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('deleted')) {
+        throw new Error(`Expected delete confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query('SELECT * FROM personal_daily_tasks WHERE id = 2');
+      if (rows.length !== 0) throw new Error('Task should be removed from database');
+    }
+  },
+  {
+    id: 'TEST-081',
+    category: 'Personal Daily Tasks',
+    message: 'delete task 2',
+    description: 'User isolation -> cannot delete task belonging to another user',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, status) VALUES (2, 'OTHER_USER_555', '99999', '2026-09-03', 'Secret task', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Delete Task Query -> Format Delete Task Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('not found')) {
+        throw new Error(`Expected unauthorized / not found message, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM personal_daily_tasks WHERE id = 2 AND user_id = 'OTHER_USER_555'");
+      if (rows.length !== 1) throw new Error('Other user task must remain in database');
+    }
+  },
+  {
+    id: 'TEST-082',
+    category: 'Personal Daily Tasks',
+    message: 'delete all tasks for Sep 5',
+    description: 'Delete all tasks unconfirmed -> prompts for confirmation',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, status) VALUES ('987654321', '987654321', '2026-09-05', 'T1', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Check Confirm Delete All Tasks -> Format Confirm Prompt Tasks',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('CONFIRM DELETE ALL TASKS')) {
+        throw new Error(`Expected confirmation prompt, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM personal_daily_tasks WHERE user_id = '987654321' AND task_date = '2026-09-05'");
+      if (rows.length !== 1) throw new Error('Tasks must not be deleted before confirmation');
+    }
+  },
+  {
+    id: 'TEST-083',
+    category: 'Personal Daily Tasks',
+    message: 'CONFIRM DELETE ALL TASKS',
+    description: 'Delete all tasks confirmed -> deletes only current user tasks for specified date',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, status) VALUES ('987654321', '987654321', '2026-09-03', 'User 1 Task', 'PENDING')");
+      db.query("INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, status) VALUES ('OTHER_USER', '11111', '2026-09-03', 'User 2 Task', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Delete All Tasks Query -> Format Delete All Tasks Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Deleted')) {
+        throw new Error(`Expected delete confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const userRows = db.query("SELECT * FROM personal_daily_tasks WHERE user_id = '987654321'");
+      if (userRows.length !== 0) throw new Error('Current user tasks should be deleted');
+      const otherRows = db.query("SELECT * FROM personal_daily_tasks WHERE user_id = 'OTHER_USER'");
+      if (otherRows.length !== 1) throw new Error('Other user tasks should remain in database');
+    }
+  },
+  {
+    id: 'TEST-084',
+    category: 'Personal Daily Tasks',
+    message: 'Morning Schedule Trigger (LEVEL_14_Daily_Task_Scheduler)',
+    description: 'Daily Task Scheduler -> sends one grouped morning briefing for incomplete tasks today',
+    workflow: 'LEVEL_14_Daily_Task_Scheduler',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, status) VALUES (1, '987654321', '987654321', date('now'), 'DSA practice', 'PENDING')");
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, status) VALUES (2, '987654321', '987654321', date('now'), 'Do n8n project', 'PENDING')");
+    },
+    expectedRoute: 'Morning Schedule Trigger -> Get Today Incomplete Tasks -> Any Tasks -> Group Tasks By User -> Send Tasks Notification -> Mark Tasks Notified',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes("TODAY'S TASKS") || !msg.text.includes('DSA practice') || !msg.text.includes('Do n8n project')) {
+        throw new Error(`Expected morning task notification, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM personal_daily_tasks WHERE task_date = date('now')");
+      if (!rows[0].notified_at || !rows[1].notified_at) {
+        throw new Error('Tasks must be marked notified to prevent duplicate morning notifications');
+      }
+    }
+  },
+  {
+    id: 'TEST-085',
+    category: 'Personal Daily Tasks',
+    message: 'Morning Schedule Trigger with completed tasks',
+    description: 'Daily Task Scheduler -> completed tasks are excluded from morning notification',
+    workflow: 'LEVEL_14_Daily_Task_Scheduler',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, status) VALUES (1, '987654321', '987654321', date('now'), 'Incomplete Task', 'PENDING')");
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, status) VALUES (2, '987654321', '987654321', date('now'), 'Completed Task', 'COMPLETED')");
+    },
+    expectedRoute: 'Morning Schedule Trigger -> Get Today Incomplete Tasks -> Any Tasks -> Group Tasks By User -> Send Tasks Notification -> Mark Tasks Notified',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Incomplete Task') || msg.text.includes('Completed Task')) {
+        throw new Error(`Completed tasks should not appear in morning notification: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-086',
+    category: 'Personal Daily Tasks',
+    message: 'Morning Schedule Trigger when no tasks exist',
+    description: 'Daily Task Scheduler -> no notification sent when no tasks exist for today',
+    workflow: 'LEVEL_14_Daily_Task_Scheduler',
+    setup: (db, test) => {
+      // Empty database
+    },
+    expectedRoute: 'Morning Schedule Trigger -> Get Today Incomplete Tasks -> Any Tasks (False)',
+    verify: async (runtime, db, result) => {
+      if (runtime.sentMessages.length > 0) {
+        throw new Error(`Expected 0 messages sent when no tasks exist, got: ${runtime.sentMessages.length}`);
+      }
+    }
   }
 ];
 

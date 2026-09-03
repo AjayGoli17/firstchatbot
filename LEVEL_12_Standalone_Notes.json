@@ -1,0 +1,364 @@
+{
+  "name": "LEVEL_12_Standalone_Notes",
+  "nodes": [
+    {
+      "id": "trigger12",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "extract12",
+      "name": "Extract Note Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst cmd = item.command || \"ADD_STANDALONE_NOTE\";\nconst params = item.parameters || {};\nconst userId = String(item.userId || item.chatId || \"default\");\nconst chatId = item.chatId;\n\nlet content = (params && params.content) || (params && params.notes) || item.text || \"\";\nif (typeof content === \"string\") {\n  content = content.replace(/^(?:note down this|note down|save note|take a note|add note)[:\\s\\n]*/i, \"\").trim();\n  if (!content && item.text) content = item.text.trim();\n}\n\nlet noteId = null;\nif (params && (params.note_id || params.id)) {\n  const rawId = String(params.note_id || params.id).replace(/[^0-9]/g, \"\");\n  if (rawId) noteId = parseInt(rawId, 10);\n}\n\nconst confirmed = params && (params.confirmed === true || String(params.confirmed).toLowerCase() === \"true\");\n\nreturn [{\n  json: {\n    command: cmd,\n    chatId,\n    userId,\n    content,\n    noteId,\n    confirmed,\n    parameters: params,\n    text: item.text\n  }\n}];"
+      }
+    },
+    {
+      "id": "route12",
+      "name": "Route Note Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ [\"ADD_STANDALONE_NOTE\", \"LIST_STANDALONE_NOTES\", \"DELETE_STANDALONE_NOTE\", \"DELETE_ALL_STANDALONE_NOTES\"].indexOf($json.command) }}",
+        "numberOutputs": 4
+      }
+    },
+    {
+      "id": "insert12",
+      "name": "Insert Standalone Note",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        60
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO standalone_notes (user_id, content) VALUES ($1, $2) RETURNING id, content, created_at",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId, $json.content ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_add12",
+      "name": "Format Add Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        60
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Note Input\").first().json;\nconst note = $input.first().json;\nif (!note || !note.id) {\n  return [{ json: { chatId: trig.chatId, text: \"⚠️ Failed to save note.\" } }];\n}\nreturn [{\n  json: {\n    chatId: trig.chatId,\n    text: `📝 <b>Note saved.</b>\\n\\n${note.content}`,\n    noteId: note.id\n  }\n}];"
+      }
+    },
+    {
+      "id": "query12",
+      "name": "Query Standalone Notes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        180
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, content, created_at FROM standalone_notes WHERE user_id = $1 ORDER BY id ASC LIMIT 50",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_list12",
+      "name": "Format Notes List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        180
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Note Input\").first().json;\nconst items = $input.all().map(i => i.json).filter(i => i && i.id);\nif (items.length === 0) {\n  return [{ json: { chatId: trig.chatId, text: \"📝 You don't have any notes yet.\" } }];\n}\nconst lines = items.map((item, idx) => {\n  return `${idx + 1}.\\n${item.content}`;\n});\nconst text = `📝 <b>YOUR NOTES</b>\\n\\n${lines.join(\"\\n\\n\")}`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
+      }
+    },
+    {
+      "id": "delete12",
+      "name": "Delete Standalone Note",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM standalone_notes WHERE id = $1 AND user_id = $2 RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [ $json.noteId, $json.userId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_del12",
+      "name": "Format Delete Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Note Input\").first().json;\nconst res = $input.first().json;\nif (res && res.id) {\n  return [{ json: { chatId: trig.chatId, text: `🗑️ Note #${res.id} deleted.` } }];\n}\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Note not found or doesn't belong to you.\" } }];"
+      }
+    },
+    {
+      "id": "check_confirm12",
+      "name": "Check Confirm Delete All",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.confirmed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "delete_all12",
+      "name": "Delete All Notes Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        380
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM standalone_notes WHERE user_id = $1 RETURNING id",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fmt_del_all12",
+      "name": "Format Delete All Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        380
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Note Input\").first().json;\nconst count = $input.all().filter(i => i.json && i.json.id).length;\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ Deleted ${count} note(s). All your notes have been cleared.` } }];"
+      }
+    },
+    {
+      "id": "fmt_prompt12",
+      "name": "Format Confirm Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        480
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const trig = $(\"Extract Note Input\").first().json;\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Are you sure you want to delete all your notes? This cannot be undone.\\n\\nReply with \\\"CONFIRM DELETE ALL NOTES\\\" to proceed.\" } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Note Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Note Input": {
+      "main": [
+        [
+          {
+            "node": "Route Note Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Note Command": {
+      "main": [
+        [
+          {
+            "node": "Insert Standalone Note",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Standalone Notes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Standalone Note",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Confirm Delete All",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Standalone Note": {
+      "main": [
+        [
+          {
+            "node": "Format Add Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Standalone Notes": {
+      "main": [
+        [
+          {
+            "node": "Format Notes List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Standalone Note": {
+      "main": [
+        [
+          {
+            "node": "Format Delete Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Confirm Delete All": {
+      "main": [
+        [
+          {
+            "node": "Delete All Notes Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Confirm Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete All Notes Query": {
+      "main": [
+        [
+          {
+            "node": "Format Delete All Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

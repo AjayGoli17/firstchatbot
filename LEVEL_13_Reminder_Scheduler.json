@@ -1,0 +1,199 @@
+{
+  "name": "LEVEL_13_Reminder_Scheduler",
+  "nodes": [
+    {
+      "id": "schedule_trigger_rem",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get_due_reminders",
+      "name": "Get Due Reminders",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, user_id, chat_id, content, reminder_at FROM standalone_reminders WHERE status = 'PENDING' AND notified_at IS NULL AND reminder_at <= now() ORDER BY reminder_at ASC",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "if_any_due_rem",
+      "name": "Any Due",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "build_reminder_notification",
+      "name": "Build Reminder Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nreturn [{\n  json: {\n    reminderId: j.id,\n    chatId: j.chat_id || $env.PERSONAL_CHAT_ID,\n    userId: j.user_id,\n    text: `🔔 <b>REMINDER</b>\\n\\n${j.content}`\n  }\n}];"
+      }
+    },
+    {
+      "id": "send_reminder_msg",
+      "name": "Send Reminder Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "mark_reminder_notified",
+      "name": "Mark Reminder Notified",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE standalone_reminders SET notified_at = now(), status = 'COMPLETED', updated_at = now() WHERE id = $1",
+        "options": {
+          "queryReplacement": "={{ [ $json.reminderId ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Due Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Due Reminders": {
+      "main": [
+        [
+          {
+            "node": "Any Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Due": {
+      "main": [
+        [
+          {
+            "node": "Build Reminder Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Reminder Notification": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder Message": {
+      "main": [
+        [
+          {
+            "node": "Mark Reminder Notified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
