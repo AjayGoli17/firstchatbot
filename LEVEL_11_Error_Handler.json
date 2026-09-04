@@ -22,7 +22,7 @@
     0
    ],
    "parameters": {
-    "jsCode": "const e = $json;\nconst workflowName = (e.workflow && e.workflow.name) || 'Unknown workflow';\nconst nodeName = (e.execution && e.execution.lastNodeExecuted) || (e.trigger && e.trigger.node) || 'unknown node';\nconst message = (e.execution && e.execution.error && e.execution.error.message)\n  || (e.error && e.error.message)\n  || 'Unknown error';\nreturn [{ json: { workflowName, nodeName, message: String(message).slice(0, 500) } }];"
+    "jsCode": "const e = $json;\nconst workflowName = (e.workflow && (e.workflow.name || e.workflow.id)) || 'Unknown workflow';\nconst executionId = (e.execution && e.execution.id) || 'n/a';\nconst nodeName = (e.execution && e.execution.lastNodeExecuted) || (e.trigger && e.trigger.node) || 'unknown node';\nconst rawMsg = (e.execution && e.execution.error && e.execution.error.message)\n  || (e.error && e.error.message)\n  || (e.message)\n  || 'Unknown error';\nconst timestamp = new Date().toISOString();\nreturn [{ json: { executionId, workflowName, nodeName, timestamp, message: String(rawMsg).slice(0, 500) } }];"
    }
   },
   {
@@ -46,13 +46,15 @@
      "id": "REPLACE_ME",
      "name": "Postgres account"
     }
-   }
+   },
+   "continueOnFail": true
   },
   {
    "id": "send_error_alert",
    "name": "Send Error Alert",
    "type": "n8n-nodes-base.telegram",
    "typeVersion": 1.2,
+   "continueOnFail": true,
    "position": [
     660,
     0

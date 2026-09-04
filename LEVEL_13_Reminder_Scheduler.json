@@ -32,7 +32,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, user_id, chat_id, content, reminder_at FROM standalone_reminders WHERE status = 'PENDING' AND notified_at IS NULL AND reminder_at <= now() ORDER BY reminder_at ASC",
+        "query": "WITH claim AS (\n  UPDATE standalone_reminders\n  SET notified_at = now(), updated_at = now()\n  WHERE id IN (\n    SELECT id\n    FROM standalone_reminders\n    WHERE status = 'PENDING'\n      AND (notified_at IS NULL OR notified_at < now() - interval '1 hour')\n      AND reminder_at <= now()\n    ORDER BY reminder_at ASC\n    LIMIT 20\n    FOR UPDATE SKIP LOCKED\n  )\n  RETURNING id, user_id, chat_id, content, reminder_at\n)\nSELECT id, user_id, chat_id, content, reminder_at FROM claim",
         "options": {}
       },
       "credentials": {

@@ -27,7 +27,7 @@
   },
   {
    "parameters": {
-    "jsCode": "const item = $input.first().json;\nconst cb = item.callback_query;\nconst msg = item.message;\n\nif (cb) {\n  return [{\n    json: {\n      isCallback: true,\n      chatId: cb.message.chat.id,\n      userId: cb.from.id,\n      messageId: cb.message.message_id,\n      callbackQueryId: cb.id,\n      callbackData: cb.data || '',\n      text: '',\n      updateId: item.update_id != null ? item.update_id : null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    isCallback: false,\n    chatId: msg ? msg.chat.id : null,\n    userId: msg ? msg.from.id : null,\n    messageId: msg ? msg.message_id : null,\n    callbackQueryId: null,\n    callbackData: '',\n    text: msg ? (msg.text || '') : '',\n    updateId: item.update_id != null ? item.update_id : null\n  }\n}];"
+    "jsCode": "const rawInput = $input.first().json;\nconst cb = rawInput.callback_query;\nconst msg = rawInput.message;\n\nif (cb) {\n  return [{\n    json: {\n      isCallback: true,\n      chatId: cb.message.chat.id,\n      userId: cb.from.id,\n      messageId: cb.message.message_id,\n      callbackQueryId: cb.id,\n      callbackData: cb.data || '',\n      text: '',\n      updateId: rawInput.update_id != null ? rawInput.update_id : null\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    isCallback: false,\n    chatId: msg ? msg.chat.id : null,\n    userId: msg ? msg.from.id : null,\n    messageId: msg ? msg.message_id : null,\n    callbackQueryId: null,\n    callbackData: '',\n    text: msg ? (msg.text || '') : '',\n    updateId: rawInput.update_id != null ? rawInput.update_id : null\n  }\n}];"
    },
    "id": "936bca33-066a-49bc-b4db-82d26165c3d3",
    "name": "Extract Input",
@@ -119,6 +119,7 @@
      "value": {
       "mode": "CALLBACK",
       "chatId": "={{$json.chatId}}",
+      "fromId": "={{$json.userId}}",
       "callbackQueryId": "={{$json.callbackQueryId}}",
       "callbackData": "={{$json.callbackData}}",
       "messageId": "={{$json.messageId}}"
@@ -622,20 +623,20 @@
    },
    "continueOnFail": true
   },
-  {
-   "id": "restore_context",
-   "name": "Restore Context",
-   "type": "n8n-nodes-base.code",
-   "typeVersion": 2,
-   "position": [
-    -480,
-    224
-   ],
-   "parameters": {
-    "language": "javaScript",
-    "jsCode": "return [{ json: $('Extract Input').first().json }];"
-   }
-  },
+   {
+    "id": "restore_context",
+    "name": "Restore Context",
+    "type": "n8n-nodes-base.code",
+    "typeVersion": 2,
+    "position": [
+     -480,
+     224
+    ],
+    "parameters": {
+     "language": "javaScript",
+     "jsCode": "const input = $('Extract Input').first().json;\nconst dupItem = $input.first() ? $input.first().json : null;\nif (input.updateId != null) {\n  if (!dupItem || !dupItem.update_id || dupItem.error) {\n    return [];\n  }\n}\nreturn [{ json: input }];"
+    }
+   },
   {
    "id": "is_cancel_cmd",
    "name": "Is Cancel Command",
@@ -677,9 +678,9 @@
    ],
    "parameters": {
     "operation": "executeQuery",
-    "query": "DELETE FROM pending_actions WHERE chat_id = $1",
+    "query": "DELETE FROM pending_actions WHERE chat_id = $1 AND (user_id = $2 OR user_id = '' OR $2 = '')",
     "options": {
-     "queryReplacement": "={{ [ String($json.chatId) ] }}"
+     "queryReplacement": "={{ [ String($json.chatId), $json.userId ? String($json.userId) : '' ] }}"
     }
    },
    "credentials": {
@@ -737,9 +738,9 @@
    ],
    "parameters": {
     "operation": "executeQuery",
-    "query": "SELECT chat_id, command, parameters, missing FROM pending_actions WHERE chat_id = $1 AND updated_at > now() - interval '15 minutes'",
+    "query": "SELECT chat_id, user_id, command, parameters, missing FROM pending_actions WHERE chat_id = $1 AND (user_id = $2 OR user_id = '' OR $2 = '') AND updated_at > now() - interval '15 minutes'",
     "options": {
-     "queryReplacement": "={{ [ String($json.chatId) ] }}"
+     "queryReplacement": "={{ [ String($json.chatId), $json.userId ? String($json.userId) : '' ] }}"
     }
    },
    "credentials": {
@@ -791,7 +792,7 @@
    ],
    "parameters": {
     "language": "javaScript",
-    "jsCode": "const STATUS_ALIASES = {\n  'PROPOSAL': 'PROPOSAL_SENT', 'PROPOSAL SENT': 'PROPOSAL_SENT', 'SENT PROPOSAL': 'PROPOSAL_SENT',\n  'SEND PROPOSAL': 'PROPOSAL_SENT', 'CONTACT': 'CONTACTED', 'REPLY': 'REPLIED', 'REPLIED TO': 'REPLIED',\n  'QUALIFY': 'QUALIFIED', 'NEGOTIATE': 'NEGOTIATION', 'NEGOTIATING': 'NEGOTIATION', 'WIN': 'WON',\n  'CLOSED WON': 'WON', 'LOSE': 'LOST', 'CLOSED LOST': 'LOST', 'NEW LEAD': 'NEW'\n};\nconst ALLOWED_STATUS = ['NEW','CONTACTED','REPLIED','QUALIFIED','PROPOSAL_SENT','NEGOTIATION','WON','LOST'];\nconst REQUIRED = {\n  ADD_LEAD: ['business_name'], LIST_LEADS: [], GET_LEAD: ['business_name'], UPDATE_LEAD: ['business_name'],\n  CHANGE_STATUS: ['business_name', 'status'], UPDATE_DEAL_VALUE: ['business_name', 'deal_value'],\n  DELETE_LEAD: ['business_name'], DELETE_ALL_LEADS: [], DELETE_EVERYTHING: [],\n  RECORD_INTERACTION: ['business_name'], ADD_NOTE: ['business_name', 'notes'], GET_LEAD_HISTORY: ['business_name'],\n  DELETE_ALL_INTERACTIONS: [],\n  CREATE_FOLLOW_UP: ['business_name'], COMPLETE_FOLLOW_UP: ['business_name'],\n  UPDATE_FOLLOW_UP: ['business_name'], CANCEL_FOLLOW_UP: ['business_name'], DELETE_FOLLOW_UP: ['business_name'], LIST_FOLLOW_UPS: [], DELETE_ALL_FOLLOWUPS: [],\n  AMBIGUOUS_DELETE: ['business_name'],\n  DAILY_PRIORITY: [], PIPELINE_ANALYTICS: [], REVENUE_ANALYTICS: [], LEAD_ANALYTICS: [],\n  ADD_STANDALONE_NOTE: ['content'], LIST_STANDALONE_NOTES: [], DELETE_STANDALONE_NOTE: ['note_id'], DELETE_ALL_STANDALONE_NOTES: [],\n  CREATE_REMINDER: ['reminder_text', 'follow_up_date'], LIST_REMINDERS: [], DELETE_REMINDER: ['reminder_id'], DELETE_ALL_REMINDERS: [],\n  CREATE_DAILY_TASKS: ['tasks'], LIST_TASKS: [], ADD_TASK: ['task_name'], UPDATE_TASK: ['task_id'], COMPLETE_TASK: ['task_id'], DELETE_TASK: ['task_id'], DELETE_ALL_TASKS: [],\n  UNKNOWN: []\n};\n\nconst trig = $('Restore Context').first().json;\nconst pending = $json;\nlet parameters = typeof pending.parameters === 'string' ? JSON.parse(pending.parameters || '{}') : (pending.parameters || {});\nconst missingList = typeof pending.missing === 'string' ? JSON.parse(pending.missing || '[]') : (pending.missing || []);\nconst field = missingList[0];\nlet value = (trig.text || '').trim();\n\nif (field === 'deal_value') {\n  const v = Number(value.replace(/[^0-9.\\-]/g, ''));\n  if (!isNaN(v)) parameters.deal_value = v;\n} else if (field === 'status') {\n  let s = value.toUpperCase().trim();\n  if (STATUS_ALIASES[s]) s = STATUS_ALIASES[s];\n  if (ALLOWED_STATUS.includes(s)) parameters.status = s;\n} else if (field === 'tasks' && typeof value === 'string') {\n  parameters.tasks = value.split('\\n').map(t => t.trim().replace(/^[-*•0-9.)\\s]+/, '')).filter(Boolean);\n} else if (field) {\n  parameters[field] = value;\n}\n\nconst missing = (REQUIRED[pending.command] || []).filter(f => {\n  const val = parameters[f];\n  if (val === undefined || val === null || val === '') return true;\n  if (Array.isArray(val) && val.length === 0) return true;\n  return false;\n});\n\nreturn [{ json: { chatId: trig.chatId, userId: trig.userId, command: pending.command, confidence: 1, parameters, missing, systemError: false } }];"
+    "jsCode": "const STATUS_ALIASES = {\n  'PROPOSAL': 'PROPOSAL_SENT', 'PROPOSAL SENT': 'PROPOSAL_SENT', 'SENT PROPOSAL': 'PROPOSAL_SENT',\n  'SEND PROPOSAL': 'PROPOSAL_SENT', 'CONTACT': 'CONTACTED', 'REPLY': 'REPLIED', 'REPLIED TO': 'REPLIED',\n  'QUALIFY': 'QUALIFIED', 'NEGOTIATE': 'NEGOTIATION', 'NEGOTIATING': 'NEGOTIATION', 'WIN': 'WON',\n  'CLOSED WON': 'WON', 'LOSE': 'LOST', 'CLOSED LOST': 'LOST', 'NEW LEAD': 'NEW'\n};\nconst ALLOWED_STATUS = ['NEW','CONTACTED','REPLIED','QUALIFIED','PROPOSAL_SENT','NEGOTIATION','WON','LOST'];\nconst REQUIRED = {\n  ADD_LEAD: ['business_name'], LIST_LEADS: [], GET_LEAD: ['business_name'], UPDATE_LEAD: ['business_name'],\n  CHANGE_STATUS: ['business_name', 'status'], UPDATE_DEAL_VALUE: ['business_name', 'deal_value'],\n  DELETE_LEAD: ['business_name'], DELETE_ALL_LEADS: [], DELETE_EVERYTHING: [],\n  RECORD_INTERACTION: ['business_name'], ADD_NOTE: ['business_name', 'notes'], GET_LEAD_HISTORY: ['business_name'],\n  DELETE_ALL_INTERACTIONS: [],\n  CREATE_FOLLOW_UP: ['business_name'], COMPLETE_FOLLOW_UP: ['business_name'],\n  UPDATE_FOLLOW_UP: ['business_name'], CANCEL_FOLLOW_UP: ['business_name'], DELETE_FOLLOW_UP: ['business_name'], LIST_FOLLOW_UPS: [], DELETE_ALL_FOLLOWUPS: [],\n  AMBIGUOUS_DELETE: ['business_name'],\n  DAILY_PRIORITY: [], PIPELINE_ANALYTICS: [], REVENUE_ANALYTICS: [], LEAD_ANALYTICS: [],\n  ADD_STANDALONE_NOTE: ['content'], LIST_STANDALONE_NOTES: [], DELETE_STANDALONE_NOTE: ['note_id'], DELETE_ALL_STANDALONE_NOTES: [],\n  CREATE_REMINDER: ['reminder_text', 'follow_up_date'], LIST_REMINDERS: [], DELETE_REMINDER: ['reminder_id'], DELETE_ALL_REMINDERS: [],\n  CREATE_DAILY_TASKS: ['tasks'], LIST_TASKS: [], ADD_TASK: ['task_name'], UPDATE_TASK: ['task_id'], COMPLETE_TASK: ['task_id'], DELETE_TASK: ['task_id'], DELETE_ALL_TASKS: [],\n  UNKNOWN: []\n};\n\nfunction parseNaturalDateTime(str, now = new Date()) {\n  if (!str || typeof str !== 'string') return null;\n  const s = str.trim().toLowerCase();\n  if (/^\\d{4}-\\d{2}-\\d{2}(T|\\s)\\d{2}:\\d{2}/.test(str)) {\n    const d = new Date(str);\n    if (!isNaN(d.getTime())) return d.toISOString();\n  }\n  const kolkataNowStr = new Intl.DateTimeFormat('en-US', {\n    timeZone: 'Asia/Kolkata', year: 'numeric', month: 'numeric', day: 'numeric',\n    hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false\n  }).format(now);\n  const [datePart] = kolkataNowStr.split(', ');\n  const [mStr, dStr, yStr] = datePart.split('/');\n  let targetYear = parseInt(yStr, 10);\n  let targetMonth = parseInt(mStr, 10) - 1;\n  let targetDay = parseInt(dStr, 10);\n  let targetHour = 10;\n  let targetMinute = 0;\n\n  const timeMatch = s.match(/(?:at\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?/i);\n  if (timeMatch && (timeMatch[3] || s.includes('at ') || timeMatch[2])) {\n    let h = parseInt(timeMatch[1], 10);\n    const min = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;\n    const meridiem = timeMatch[3] ? timeMatch[3].toLowerCase() : null;\n    if (meridiem === 'pm' && h < 12) h += 12;\n    if (meridiem === 'am' && h === 12) h = 0;\n    if (h >= 0 && h <= 23 && min >= 0 && min <= 59) {\n      targetHour = h;\n      targetMinute = min;\n    }\n  }\n\n  const inHoursMatch = s.match(/in\\s+(\\d+)\\s+hour/);\n  const inMinsMatch = s.match(/in\\s+(\\d+)\\s+min/);\n  const inDaysMatch = s.match(/in\\s+(\\d+)\\s+day/);\n  if (inHoursMatch) return new Date(now.getTime() + parseInt(inHoursMatch[1], 10) * 3600000).toISOString();\n  if (inMinsMatch) return new Date(now.getTime() + parseInt(inMinsMatch[1], 10) * 60000).toISOString();\n  if (inDaysMatch) {\n    targetDay += parseInt(inDaysMatch[1], 10);\n  } else if (s.includes('tomorrow')) {\n    targetDay += 1;\n  } else if (s.includes('today')) {\n  } else {\n    const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];\n    const weekdayIdx = weekdays.findIndex(w => s.includes(w));\n    if (weekdayIdx !== -1) {\n      const curDay = new Date(Date.UTC(targetYear, targetMonth, targetDay)).getUTCDay();\n      let diff = weekdayIdx - curDay;\n      if (diff <= 0 || s.includes('next')) diff += 7;\n      targetDay += diff;\n    } else {\n      const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];\n      let foundMonth = -1;\n      for (let i = 0; i < 12; i++) {\n        if (s.includes(months[i])) { foundMonth = i; break; } \n      }\n      if (foundMonth !== -1) {\n        targetMonth = foundMonth;\n        const dayMatch = s.match(/(\\d{1,2})(?:st|nd|rd|th)?/);\n        if (dayMatch) targetDay = parseInt(dayMatch[1], 10);\n        const yearMatch = s.match(/\\b(20\\d{2})\\b/);\n        if (yearMatch) targetYear = parseInt(yearMatch[1], 10);\n      } else {\n        const parsed = new Date(str);\n        if (!isNaN(parsed.getTime())) return parsed.toISOString();\n        return null;\n      }\n    }\n  }\n  const utcMillis = Date.UTC(targetYear, targetMonth, targetDay, targetHour, targetMinute, 0) - (5.5 * 3600000);\n  return new Date(utcMillis).toISOString();\n}\n\nconst trig = $('Restore Context').first().json;\nconst pending = $json;\nlet parameters = typeof pending.parameters === 'string' ? JSON.parse(pending.parameters || '{}') : (pending.parameters || {});\nconst missingList = typeof pending.missing === 'string' ? JSON.parse(pending.missing || '[]') : (pending.missing || []);\nconst field = missingList[0];\nlet value = (trig.text || '').trim();\n\nif (field === 'deal_value') {\n  const v = Number(value.replace(/[^0-9.\\-]/g, ''));\n  if (!isNaN(v)) parameters.deal_value = v;\n} else if (field === 'status') {\n  let s = value.toUpperCase().trim();\n  if (STATUS_ALIASES[s]) s = STATUS_ALIASES[s];\n  if (ALLOWED_STATUS.includes(s)) parameters.status = s;\n} else if (field === 'tasks' && typeof value === 'string') {\n  parameters.tasks = value.split('\\n').map(t => t.trim().replace(/^[-*•0-9.)\\s]+/, '')).filter(Boolean);\n} else if (['follow_up_date', 'due_date', 'due_at', 'reminder_at', 'task_date'].includes(field)) {\n  const parsed = parseNaturalDateTime(value);\n  if (parsed) parameters[field] = parsed;\n} else if (field === 'priority') {\n  const p = value.toUpperCase().trim();\n  if (['HIGH', 'MEDIUM', 'LOW'].includes(p)) parameters.priority = p;\n} else if (field) {\n  parameters[field] = value;\n}\n\nconst missing = (REQUIRED[pending.command] || []).filter(f => {\n  const val = parameters[f];\n  if (val === undefined || val === null || val === '') return true;\n  if (Array.isArray(val) && val.length === 0) return true;\n  return false;\n});\n\nreturn [{ json: { chatId: trig.chatId, userId: trig.userId, command: pending.command, confidence: 1, parameters, missing, systemError: false } }];"
    }
   },
   {
@@ -871,9 +872,9 @@
    ],
    "parameters": {
     "operation": "executeQuery",
-    "query": "INSERT INTO pending_actions (chat_id, command, parameters, missing) VALUES ($1,$2,$3,$4) ON CONFLICT (chat_id) DO UPDATE SET command = EXCLUDED.command, parameters = EXCLUDED.parameters, missing = EXCLUDED.missing, updated_at = now()",
+    "query": "INSERT INTO pending_actions (chat_id, user_id, command, parameters, missing) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (chat_id, user_id) DO UPDATE SET command = EXCLUDED.command, parameters = EXCLUDED.parameters, missing = EXCLUDED.missing, updated_at = now()",
     "options": {
-     "queryReplacement": "={{ [ String($json.chatId), $json.command, JSON.stringify($json.parameters), JSON.stringify($json.missing) ] }}"
+     "queryReplacement": "={{ [ String($json.chatId), $json.userId ? String($json.userId) : '', $json.command, JSON.stringify($json.parameters || {}), JSON.stringify($json.missing || []) ] }}"
     }
    },
    "credentials": {
@@ -895,9 +896,9 @@
    ],
    "parameters": {
     "operation": "executeQuery",
-    "query": "DELETE FROM pending_actions WHERE chat_id = $1",
+    "query": "DELETE FROM pending_actions WHERE chat_id = $1 AND (user_id = $2 OR user_id = '' OR $2 = '')",
     "options": {
-     "queryReplacement": "={{ [ String($json.chatId) ] }}"
+     "queryReplacement": "={{ [ String($json.chatId), $json.userId ? String($json.userId) : '' ] }}"
     }
    },
    "credentials": {

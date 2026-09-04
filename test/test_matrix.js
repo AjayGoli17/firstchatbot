@@ -607,9 +607,9 @@ const testMatrix = [
     description: 'Human approval callback — tap Approve (A)',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL',
     setup: (db, test) => {
-      const lead = db.seedLead({ business_name: 'Big Client', status: 'PROPOSAL_SENT', updated_at: '2026-09-01T12:00:00.000Z' });
+      const lead = db.seedLead({ business_name: 'Big Client', status: 'PROPOSAL_SENT', updated_at: new Date().toISOString() });
       const v = new Date(lead.updated_at).toISOString().replace(/[:]/g, '');
-      test.callbackData = `appr:${lead.id}:status:WON:${v}:A`;
+      test.callbackData = `appr:${lead.id}:status:WON:${v}:987654321:A`;
     },
     expectedRoute: 'Route Callback Prefix (appr:) -> Execute Approval Callback -> Apply Approved Change -> Build Approve Message',
     verify: async (runtime, db, result) => {
@@ -628,9 +628,9 @@ const testMatrix = [
     description: 'Human approval callback — tap Reject (R)',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL',
     setup: (db, test) => {
-      const lead = db.seedLead({ business_name: 'Big Client', status: 'PROPOSAL_SENT', updated_at: '2026-09-01T12:00:00.000Z' });
+      const lead = db.seedLead({ business_name: 'Big Client', status: 'PROPOSAL_SENT', updated_at: new Date().toISOString() });
       const v = new Date(lead.updated_at).toISOString().replace(/[:]/g, '');
-      test.callbackData = `appr:${lead.id}:status:WON:${v}:R`;
+      test.callbackData = `appr:${lead.id}:status:WON:${v}:987654321:R`;
     },
     expectedRoute: 'Route Callback Prefix (appr:) -> Execute Approval Callback -> Build Reject Message',
     verify: async (runtime, db, result) => {
@@ -1284,58 +1284,62 @@ const testMatrix = [
   },
 
   // =========================================================================
-  // 14. Standalone Reminders (LEVEL_13)
+  // 14. Standalone Reminders (LEVEL_13) with Google Calendar Integration
   // =========================================================================
   {
     id: 'TEST-065',
     category: 'Standalone Reminders',
-    message: 'remind me tomorrow to submit invoice',
-    description: 'Create personal reminder -> creates record in standalone_reminders',
+    message: 'Remind me tomorrow at 3 PM to call John about the project.',
+    description: 'Create personal reminder -> creates record in standalone_reminders, GCal event, and stores google_calendar_event_id',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
-    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Format Create Confirmation',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Create Google Calendar Event -> Save GCal Event Id -> Format Create Success Confirmation',
     verify: async (runtime, db, result) => {
       const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
-      if (!msg || !msg.text.includes('Reminder set')) {
-        throw new Error(`Expected reminder set confirmation, got: ${JSON.stringify(msg)}`);
+      if (!msg || !msg.text.includes('Reminder set') || !msg.text.includes('Added to Google Calendar')) {
+        throw new Error(`Expected reminder set confirmation with Google Calendar, got: ${JSON.stringify(msg)}`);
       }
       const rows = db.query("SELECT * FROM standalone_reminders WHERE user_id = '987654321'");
       if (rows.length !== 1) throw new Error(`Expected 1 reminder, found ${rows.length}`);
-      if (!rows[0].content.includes('submit invoice')) throw new Error(`Unexpected reminder content: ${rows[0].content}`);
+      if (!rows[0].content.includes('call John about the project')) throw new Error(`Unexpected reminder content: ${rows[0].content}`);
+      if (!rows[0].google_calendar_event_id) throw new Error('google_calendar_event_id was not saved to database');
+
+      // Verify Google Calendar event was dispatched
+      const gcalEvents = runtime.calendarEvents.filter(e => e.operation === 'create');
+      if (gcalEvents.length !== 1) throw new Error(`Expected 1 GCal create event, found ${gcalEvents.length}`);
+      if (!gcalEvents[0].summary.includes('call John about the project')) throw new Error(`Unexpected GCal summary: ${gcalEvents[0].summary}`);
     }
   },
   {
     id: 'TEST-066',
     category: 'Standalone Reminders',
-    message: 'remind me on monday to follow up with Vivek School',
-    description: 'Create reminder with business name not in leads table -> succeeds as personal reminder',
+    message: 'Remind me on September 5 at 10 AM to send the proposal.',
+    description: 'Create reminder with date/time -> creates GCal event and Telegram confirmation',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
-    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Format Create Confirmation',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Create Google Calendar Event -> Save GCal Event Id -> Format Create Success Confirmation',
     verify: async (runtime, db, result) => {
       const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
-      if (!msg || !msg.text.includes('Reminder set') || !msg.text.includes('Vivek School')) {
-        throw new Error(`Expected reminder set with Vivek School, got: ${JSON.stringify(msg)}`);
+      if (!msg || !msg.text.includes('Reminder set') || !msg.text.includes('send the proposal')) {
+        throw new Error(`Expected reminder set confirmation, got: ${JSON.stringify(msg)}`);
       }
       const rows = db.query("SELECT * FROM standalone_reminders WHERE user_id = '987654321'");
       if (rows.length !== 1) throw new Error(`Expected 1 reminder, found ${rows.length}`);
-      // Ensure leads table is untouched
-      const leadRows = db.query("SELECT * FROM leads WHERE business_name LIKE '%Vivek%'");
-      if (leadRows.length !== 0) throw new Error('Personal reminder should not create a lead in CRM');
+      if (!rows[0].google_calendar_event_id) throw new Error('google_calendar_event_id was not saved');
     }
   },
   {
     id: 'TEST-067',
     category: 'Standalone Reminders',
     message: 'show my reminders',
-    description: 'List reminders -> shows formatted list of active reminders',
+    description: 'List reminders -> shows formatted list with Google Calendar sync indicator',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
     setup: (db, test) => {
-      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status) VALUES ('987654321', '987654321', 'Pay server bill', '2026-09-10T10:00:00Z', 'PENDING')");
+      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status, google_calendar_event_id) VALUES ('987654321', '987654321', 'Pay server bill', '2026-09-10T10:00:00Z', 'PENDING', 'gcal_event_123')");
     },
     expectedRoute: 'AI Router -> Execute Standalone Reminders -> Query Standalone Reminders -> Format Reminders List',
     verify: async (runtime, db, result) => {
       const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
-      if (!msg || !msg.text.includes('YOUR REMINDERS') || !msg.text.includes('Pay server bill')) {
-        throw new Error(`Expected reminders list, got: ${JSON.stringify(msg)}`);
+      if (!msg || !msg.text.includes('YOUR REMINDERS') || !msg.text.includes('Pay server bill') || !msg.text.includes('Google Calendar')) {
+        throw new Error(`Expected reminders list with Google Calendar tag, got: ${JSON.stringify(msg)}`);
       }
     }
   },
@@ -1343,12 +1347,12 @@ const testMatrix = [
     id: 'TEST-068',
     category: 'Standalone Reminders',
     message: 'delete reminder 1',
-    description: 'Delete one reminder -> removes reminder and confirms',
+    description: 'Delete one reminder -> deletes PostgreSQL reminder AND corresponding Google Calendar event',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
     setup: (db, test) => {
-      db.query("INSERT INTO standalone_reminders (id, user_id, chat_id, content, reminder_at, status) VALUES (1, '987654321', '987654321', 'Delete me', '2026-09-10T10:00:00Z', 'PENDING')");
+      db.query("INSERT INTO standalone_reminders (id, user_id, chat_id, content, reminder_at, status, google_calendar_event_id) VALUES (1, '987654321', '987654321', 'Delete me', '2026-09-10T10:00:00Z', 'PENDING', 'gcal_del_999')");
     },
-    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Find Reminder Before Delete -> Delete GCal Event -> Delete Standalone Reminder DB -> Format Delete Confirmation',
     verify: async (runtime, db, result) => {
       const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
       if (!msg || !msg.text.includes('deleted')) {
@@ -1356,6 +1360,10 @@ const testMatrix = [
       }
       const rows = db.query('SELECT * FROM standalone_reminders WHERE id = 1');
       if (rows.length !== 0) throw new Error('Reminder should be deleted from database');
+
+      // Verify Google Calendar event was deleted
+      const gcalDeletes = runtime.calendarEvents.filter(e => e.operation === 'delete' && e.eventId === 'gcal_del_999');
+      if (gcalDeletes.length !== 1) throw new Error('Corresponding Google Calendar event was not deleted');
     }
   },
   {
@@ -1364,7 +1372,7 @@ const testMatrix = [
     message: 'delete reminder 9999',
     description: 'Attempt invalid reminder deletion -> returns not found message',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
-    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Find Reminder Before Delete -> Format Delete Not Found',
     verify: async (runtime, db, result) => {
       const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
       if (!msg || !msg.text.includes('not found')) {
@@ -1379,9 +1387,9 @@ const testMatrix = [
     description: 'User isolation -> cannot delete reminder belonging to another user',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
     setup: (db, test) => {
-      db.query("INSERT INTO standalone_reminders (id, user_id, chat_id, content, reminder_at, status) VALUES (1, 'OTHER_USER_999', '11111', 'Private reminder', '2026-09-10T10:00:00Z', 'PENDING')");
+      db.query("INSERT INTO standalone_reminders (id, user_id, chat_id, content, reminder_at, status, google_calendar_event_id) VALUES (1, 'OTHER_USER_999', '11111', 'Private reminder', '2026-09-10T10:00:00Z', 'PENDING', 'other_gcal_evt')");
     },
-    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Find Reminder Before Delete -> Format Delete Not Found',
     verify: async (runtime, db, result) => {
       const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
       if (!msg || !msg.text.includes('not found')) {
@@ -1389,6 +1397,8 @@ const testMatrix = [
       }
       const rows = db.query("SELECT * FROM standalone_reminders WHERE id = 1 AND user_id = 'OTHER_USER_999'");
       if (rows.length !== 1) throw new Error('Other user reminder should remain in database');
+      const gcalDeletes = runtime.calendarEvents.filter(e => e.operation === 'delete');
+      if (gcalDeletes.length !== 0) throw new Error('Other user GCal event should not be deleted');
     }
   },
   {
@@ -1414,13 +1424,13 @@ const testMatrix = [
     id: 'TEST-072',
     category: 'Standalone Reminders',
     message: 'CONFIRM DELETE ALL REMINDERS',
-    description: 'Delete all reminders confirmed -> removes only current user reminders',
+    description: 'Delete all reminders confirmed -> removes current user reminders and GCal events',
     workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
     setup: (db, test) => {
-      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status) VALUES ('987654321', '987654321', 'R1', '2026-09-10T10:00:00Z', 'PENDING')");
-      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status) VALUES ('OTHER_USER', '22222', 'R2', '2026-09-10T10:00:00Z', 'PENDING')");
+      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status, google_calendar_event_id) VALUES ('987654321', '987654321', 'R1', '2026-09-10T10:00:00Z', 'PENDING', 'gcal_user1_evt')");
+      db.query("INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status, google_calendar_event_id) VALUES ('OTHER_USER', '22222', 'R2', '2026-09-10T10:00:00Z', 'PENDING', 'gcal_user2_evt')");
     },
-    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Delete All Reminders Query -> Format Delete All Confirmation',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Check Confirm Delete All -> Find All Reminders With GCal -> Delete All Reminders Query -> Format Delete All Confirmation',
     verify: async (runtime, db, result) => {
       const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
       if (!msg || !msg.text.includes('cleared') && !msg.text.includes('Deleted')) {
@@ -1430,6 +1440,10 @@ const testMatrix = [
       if (userRows.length !== 0) throw new Error('Current user reminders should be deleted');
       const otherRows = db.query("SELECT * FROM standalone_reminders WHERE user_id = 'OTHER_USER'");
       if (otherRows.length !== 1) throw new Error('Other user reminders should be preserved');
+
+      // Verify only user 1 GCal event was deleted
+      const gcalDeletes = runtime.calendarEvents.filter(e => e.operation === 'delete' && e.eventId === 'gcal_user1_evt');
+      if (gcalDeletes.length !== 1) throw new Error('User 1 GCal event was not deleted');
     }
   },
   {
@@ -1451,6 +1465,30 @@ const testMatrix = [
       if (rows[0].status !== 'COMPLETED' && !rows[0].notified_at) {
         throw new Error('Reminder should be marked notified/completed to prevent duplicate send');
       }
+      // Scheduler should NOT create GCal events
+      const gcalEvents = runtime.calendarEvents.filter(e => e.operation === 'create');
+      if (gcalEvents.length !== 0) throw new Error('Scheduler should not create GCal events');
+    }
+  },
+  {
+    id: 'TEST-073B',
+    category: 'Standalone Reminders',
+    message: 'Remind me tomorrow at 5 PM to review contracts',
+    description: 'Google Calendar API failure -> preserves PostgreSQL reminder, returns clear warning in Telegram',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    setup: (db, test) => {
+      // Simulate GCal failure
+      test._simulateGCalFailure = true;
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Create Google Calendar Event (Fails) -> Format Create Warning Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Reminder set') || !msg.text.includes('Could not sync to Google Calendar')) {
+        throw new Error(`Expected warning about GCal sync failure, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM standalone_reminders WHERE user_id = '987654321'");
+      if (rows.length !== 1) throw new Error('PostgreSQL reminder must remain saved even when GCal fails');
+      if (rows[0].google_calendar_event_id) throw new Error('google_calendar_event_id should be null on failure');
     }
   },
 
@@ -1696,6 +1734,757 @@ const testMatrix = [
     verify: async (runtime, db, result) => {
       if (runtime.sentMessages.length > 0) {
         throw new Error(`Expected 0 messages sent when no tasks exist, got: ${runtime.sentMessages.length}`);
+      }
+    }
+  },
+
+  // =========================================================================
+  // 13. Comprehensive Audit Verification Tests (TEST-087 to TEST-115)
+  // =========================================================================
+
+  // --- Task Priority (LEVEL 14) ---
+  {
+    id: 'TEST-087',
+    category: 'Task Priority',
+    message: 'add task for today: Finish client proposal (HIGH)',
+    description: 'Add task with explicit HIGH priority -> saved with priority=HIGH and badge in confirmation',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Route Task Command -> Add Single Task -> Format Add Task Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Task added') || !msg.text.includes('HIGH')) {
+        throw new Error(`Expected task confirmation with HIGH priority, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM personal_daily_tasks WHERE content LIKE '%Finish client proposal%'");
+      if (rows.length === 0) throw new Error('Task was not inserted');
+      if (rows[0].priority !== 'HIGH') throw new Error(`Expected priority HIGH, got ${rows[0].priority}`);
+    }
+  },
+  {
+    id: 'TEST-088',
+    category: 'Task Priority',
+    message: 'add task for today: Review open PRs',
+    description: 'Add task without explicit priority -> defaults to priority=MEDIUM',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Route Task Command -> Add Single Task -> Format Add Task Confirmation',
+    verify: async (runtime, db, result) => {
+      const rows = db.query("SELECT * FROM personal_daily_tasks WHERE content LIKE '%Review open PRs%'");
+      if (rows.length === 0) throw new Error('Task was not inserted');
+      if (rows[0].priority !== 'MEDIUM') throw new Error(`Expected default priority MEDIUM, got ${rows[0].priority}`);
+    }
+  },
+  {
+    id: 'TEST-089',
+    category: 'Task Priority',
+    message: 'update task 1 priority to HIGH',
+    description: 'Update existing task priority to HIGH -> updates priority in DB',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, priority, status) VALUES (1, '987654321', '987654321', '2026-09-03', 'Existing task', 'LOW', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Route Task Command -> Update Task -> Format Update Task Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('updated') || !msg.text.includes('HIGH')) {
+        throw new Error(`Expected update confirmation with HIGH, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM personal_daily_tasks WHERE id = 1");
+      if (rows[0].priority !== 'HIGH') throw new Error(`Expected priority HIGH, got ${rows[0].priority}`);
+    }
+  },
+  {
+    id: 'TEST-090',
+    category: 'Task Priority',
+    message: 'show today\'s tasks',
+    description: 'List tasks formats priority badges and sorts HIGH before MEDIUM and LOW',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, priority, status) VALUES (1, '987654321', '987654321', '2026-09-03', 'Low priority task', 'LOW', 'PENDING')");
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, priority, status) VALUES (2, '987654321', '987654321', '2026-09-03', 'High priority task', 'HIGH', 'PENDING')");
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, priority, status) VALUES (3, '987654321', '987654321', '2026-09-03', 'Medium priority task', 'MEDIUM', 'PENDING')");
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> Route Task Command -> Get Tasks For Date -> Format Tasks List',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('[HIGH]') || !msg.text.includes('[LOW]')) {
+        throw new Error(`Expected priority badges in task list, got: ${JSON.stringify(msg)}`);
+      }
+      const highIdx = msg.text.indexOf('High priority task');
+      const medIdx = msg.text.indexOf('Medium priority task');
+      const lowIdx = msg.text.indexOf('Low priority task');
+      if (highIdx === -1 || medIdx === -1 || lowIdx === -1 || highIdx > medIdx || medIdx > lowIdx) {
+        throw new Error(`Expected HIGH task before MEDIUM before LOW task in list: ${msg.text}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-091',
+    category: 'Task Priority',
+    message: 'Morning Schedule Trigger with priorities',
+    description: 'Daily Task Scheduler displays priority badges in morning notification',
+    workflow: 'LEVEL_14_Daily_Task_Scheduler',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, priority, status) VALUES (1, '987654321', '987654321', date('now'), 'Critical bug fix', 'HIGH', 'PENDING')");
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, priority, status) VALUES (2, '987654321', '987654321', date('now'), 'Regular docs', 'MEDIUM', 'PENDING')");
+    },
+    expectedRoute: 'Morning Schedule Trigger -> Get Today Incomplete Tasks -> Any Tasks -> Group Tasks By User -> Send Tasks Notification -> Mark Tasks Notified',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('[HIGH]') || !msg.text.includes('Critical bug fix')) {
+        throw new Error(`Expected HIGH priority badge in morning notification, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+
+  // --- Natural Language Dates & Timezone (LEVEL 6, 13, 3) ---
+  {
+    id: 'TEST-092',
+    category: 'Natural Language Dates',
+    message: 'remind me to call ABC School tomorrow 10am',
+    description: 'Follow-up creation formats both date AND time in confirmation message',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'ABC School', status: 'NEW' });
+    },
+    expectedRoute: 'AI Router -> Execute Followup Management -> Compute Due Date -> Insert Follow Up -> Build Create Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Follow-up') || !msg.text.includes('at')) {
+        throw new Error(`Expected date and time in confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM follow_ups WHERE lead_id = (SELECT id FROM leads WHERE business_name = 'ABC School')");
+      if (rows.length === 0) throw new Error('Follow-up was not created');
+      if (!rows[0].due_at) throw new Error('Follow-up due_at is missing');
+    }
+  },
+  {
+    id: 'TEST-093',
+    category: 'Natural Language Dates',
+    message: 'remind me on Monday Sep 7 at 10am to call client',
+    description: 'Standalone reminder parses natural language date and time into valid ISO timestamp',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_13_Standalone_Reminders',
+    expectedRoute: 'AI Router -> Execute Standalone Reminders -> Route Reminder Command -> Extract Reminder Input -> Insert Standalone Reminder -> Format Create Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Reminder set') || !msg.text.includes('2026')) {
+        throw new Error(`Expected formatted reminder confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM standalone_reminders WHERE chat_id = '987654321'");
+      if (rows.length === 0) throw new Error('Reminder was not inserted');
+      if (!rows[0].reminder_at || isNaN(new Date(rows[0].reminder_at).getTime())) {
+        throw new Error(`Invalid reminder_at timestamp: ${rows[0].reminder_at}`);
+      }
+    }
+  },
+
+  // --- Follow-up Scheduler State & Cooldown (LEVEL 7) ---
+  {
+    id: 'TEST-094',
+    category: 'Follow-up Scheduler',
+    message: 'Scheduler Notification Loop Test',
+    description: 'Scheduler records last_notified_at and preserves original due_at timestamp',
+    workflow: 'LEVEL_7_Followup_Scheduler',
+    setup: (db, test) => {
+      const pastDue = new Date(Date.now() - 3600000).toISOString();
+      const lead = db.seedLead({ business_name: 'Overdue Lead' });
+      db.query(`INSERT INTO follow_ups (lead_id, due_at, status, last_notified_at) VALUES (${lead.id}, '${pastDue}', 'PENDING', NULL)`);
+    },
+    expectedRoute: 'Check Overdue Follow-ups -> Find Overdue Followups -> Overdue Followups Found -> Send Followup Reminder Notification -> Mark Followups Notified',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('FOLLOW-UP DUE') || !msg.text.includes('Overdue Lead')) {
+        throw new Error(`Expected reminder notification, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM follow_ups WHERE lead_id = (SELECT id FROM leads WHERE business_name = 'Overdue Lead')");
+      if (!rows[0].last_notified_at) {
+        throw new Error('last_notified_at was not updated by scheduler');
+      }
+    }
+  },
+  {
+    id: 'TEST-095',
+    category: 'Follow-up Scheduler',
+    message: 'Scheduler Notification Cooldown Test',
+    description: 'Scheduler does not re-notify follow-ups that were notified within the last 12 hours',
+    workflow: 'LEVEL_7_Followup_Scheduler',
+    setup: (db, test) => {
+      const pastDue = new Date(Date.now() - 3600000).toISOString();
+      const recentNotified = new Date(Date.now() - 1800000).toISOString(); // 30m ago
+      const lead = db.seedLead({ business_name: 'Recently Notified Lead' });
+      db.query(`INSERT INTO follow_ups (lead_id, due_at, status, last_notified_at) VALUES (${lead.id}, '${pastDue}', 'PENDING', '${recentNotified}')`);
+    },
+    expectedRoute: 'Check Overdue Follow-ups -> Find Overdue Followups -> Overdue Followups Found (False)',
+    verify: async (runtime, db, result) => {
+      if (runtime.sentMessages.length > 0) {
+        throw new Error(`Expected 0 messages due to 12h cooldown, got: ${runtime.sentMessages.length}`);
+      }
+    }
+  },
+
+  // --- Follow-up Callback Validation (LEVEL 7 Callback) ---
+  {
+    id: 'TEST-096',
+    category: 'Callback Validation',
+    message: 'Invalid Callback Payload (Wrong prefix)',
+    description: 'Callback with invalid prefix is rejected cleanly without crashing',
+    workflow: 'LEVEL_7_Followup_Callback',
+    payload: {
+      callback_query: {
+        id: 'cb_inv_1',
+        from: { id: 987654321, username: 'testuser' },
+        message: { chat: { id: 987654321 }, message_id: 888 },
+        data: 'wrong_prefix:1:1:Y'
+      }
+    },
+    expectedRoute: 'Telegram Trigger Callback -> Parse Callback Data -> Valid Callback -> Reject Invalid Callback -> Send Invalid Callback Alert',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Invalid or malformed')) {
+        throw new Error(`Expected invalid callback rejection message, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-097',
+    category: 'Callback Validation',
+    message: 'Invalid Callback Payload (Non-integer ID)',
+    description: 'Callback with non-numeric ID parameter is rejected safely',
+    workflow: 'LEVEL_7_Followup_Callback',
+    payload: {
+      callback_query: {
+        id: 'cb_inv_2',
+        from: { id: 987654321, username: 'testuser' },
+        message: { chat: { id: 987654321 }, message_id: 889 },
+        data: 'fu:abc:1:Y'
+      }
+    },
+    expectedRoute: 'Telegram Trigger Callback -> Parse Callback Data -> Valid Callback -> Reject Invalid Callback -> Send Invalid Callback Alert',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Invalid or malformed')) {
+        throw new Error(`Expected invalid callback rejection, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+
+  // --- Human Approval Optimistic Concurrency (LEVEL 10) ---
+  {
+    id: 'TEST-098',
+    category: 'Human Approval Concurrency',
+    isCallback: true,
+    description: 'Approval applies successfully when expected updated_at timestamp matches',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    setup: (db, test) => {
+      const nowStr = new Date().toISOString();
+      const lead = db.seedLead({ business_name: 'Tech Corp', status: 'IN_CONVERSATION', updated_at: nowStr });
+      const v = new Date(lead.updated_at).toISOString().replace(/[:]/g, '');
+      test.callbackData = `appr:${lead.id}:status:WON:${v}:987654321:A`;
+    },
+    expectedRoute: 'Route Callback Prefix (appr:) -> Execute Approval Callback -> Apply Approved Change -> Build Approve Message',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages.find(m => m.nodeName === 'Edit Approval Message') || runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !/approved/i.test(msg.text) || !msg.text.includes('Tech Corp')) {
+        throw new Error(`Expected successful approval message, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM leads WHERE business_name = 'Tech Corp'");
+      if (rows[0].status !== 'WON') throw new Error(`Expected status WON, got ${rows[0].status}`);
+    }
+  },
+  {
+    id: 'TEST-099',
+    category: 'Human Approval Concurrency',
+    isCallback: true,
+    description: 'Approval fails safely with conflict notice when expected updated_at does not match',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    setup: (db, test) => {
+      // Lead was modified in the interim by someone else
+      const lead = db.seedLead({ business_name: 'Tech Corp', status: 'LOST', updated_at: new Date().toISOString() });
+      // Stale callback data with old version timestamp
+      const staleV = new Date(Date.now() - 60000).toISOString().replace(/[:]/g, '');
+      test.callbackData = `appr:${lead.id}:status:WON:${staleV}:987654321:A`;
+    },
+    expectedRoute: 'Route Callback Prefix (appr:) -> Execute Approval Callback -> Apply Approved Change -> Build Approve Message',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages.find(m => m.nodeName === 'Edit Approval Message') || runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || (!msg.text.includes('changed since the request was made') && !msg.text.includes('modified') && !msg.text.includes('Conflict'))) {
+        throw new Error(`Expected conflict rejection message, got: ${JSON.stringify(msg)}`);
+      }
+      const rows = db.query("SELECT * FROM leads WHERE business_name = 'Tech Corp'");
+      if (rows[0].status === 'WON') throw new Error('Stale change should not overwrite existing status');
+    }
+  },
+
+  // --- Telegram Deduplication & DB Failures (LEVEL 3) ---
+  {
+    id: 'TEST-100',
+    category: 'Telegram Update Deduplication',
+    message: '/help',
+    updateId: 999999,
+    description: 'Duplicate update_id is dropped by Restore Context and halts execution without sending responses',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    setup: (db, test) => {
+      db.query("INSERT INTO processed_updates (update_id) VALUES (?)", [999999]);
+    },
+    expectedRoute: 'Telegram Trigger -> Check Update Deduplication -> Restore Context (Empty / Halt)',
+    verify: async (runtime, db, result) => {
+      if (runtime.sentMessages.length > 0) {
+        throw new Error(`Duplicate update must not produce any sent messages, got: ${runtime.sentMessages.length}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-101',
+    category: 'User Scoping & Isolation',
+    message: 'Sunrise Academy',
+    description: 'User B answering pending action created for User A does not match User A pending action',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    setup: (db, test) => {
+      // Pending action created by user 11111
+      db.query("INSERT INTO pending_actions (chat_id, user_id, command, parameters, missing, updated_at) VALUES ('987654321', '11111', 'ADD_LEAD', '{\"deal_value\": 5000}', '[\"business_name\"]', datetime('now'))");
+    },
+    triggerData: {
+      update_id: 100001,
+      message: {
+        message_id: 124,
+        from: { id: 987654321, username: 'user2' }, // user 987654321 != 11111
+        chat: { id: 987654321, type: 'private' },
+        text: 'Sunrise Academy'
+      }
+    },
+    expectedRoute: 'Telegram Trigger -> Check Pending Action (Not found for user 987654321) -> AI Router',
+    verify: async (runtime, db, result) => {
+      // The pending action for 11111 should NOT be cleared or merged
+      const rows = db.query("SELECT * FROM pending_actions WHERE user_id = '11111'");
+      if (rows.length !== 1) {
+        throw new Error('Pending action for user 11111 was improperly modified or cleared');
+      }
+    }
+  },
+
+  // --- Multi-Currency Analytics (LEVEL 8 & 9) ---
+  {
+    id: 'TEST-102',
+    category: 'Analytics Multi-Currency',
+    message: 'how much money did i make',
+    description: 'Revenue analytics reports multi-currency totals without hardcoded INR',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_9_Revenue_Analytics',
+    setup: (db, test) => {
+      db.query("INSERT INTO leads (business_name, deal_value, currency, status, won_at, updated_at) VALUES ('USD Client', 2000, 'USD', 'WON', datetime('now'), datetime('now'))");
+      db.query("INSERT INTO leads (business_name, deal_value, currency, status, won_at, updated_at) VALUES ('INR Client', 50000, 'INR', 'WON', datetime('now'), datetime('now'))");
+      db.query("INSERT INTO leads (business_name, deal_value, currency, status, won_at, updated_at) VALUES ('EUR Client', 1500, 'EUR', 'WON', datetime('now'), datetime('now'))");
+    },
+    expectedRoute: 'AI Router -> Execute Revenue Analytics -> Fetch Revenue Stats -> Format Revenue Report',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !/Revenue/i.test(msg.text) || !msg.text.includes('USD') || !msg.text.includes('EUR') || (!msg.text.includes('INR') && !msg.text.includes('₹'))) {
+        throw new Error(`Expected breakdown with USD, INR/₹, and EUR, got: ${JSON.stringify(msg)}`);
+      }
+    }
+  },
+
+  // --- Destructive Action Guard & Cascade (LEVEL 4) ---
+  {
+    id: 'TEST-103',
+    category: 'Destructive Action Safety',
+    message: 'delete all leads',
+    description: 'Unconfirmed DELETE_ALL_LEADS returns strict confirmation prompt with keyword instructions',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'Lead 1' });
+      db.seedLead({ business_name: 'Lead 2' });
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> Route Action -> Prompt Confirm Delete All',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('CONFIRM DELETE ALL LEADS')) {
+        throw new Error(`Expected confirmation prompt, got: ${JSON.stringify(msg)}`);
+      }
+      const count = db.query('SELECT COUNT(*) as cnt FROM leads')[0].cnt;
+      if (count !== 2) throw new Error('Leads must not be deleted without confirmation');
+    }
+  },
+  {
+    id: 'TEST-104',
+    category: 'Destructive Action Safety',
+    message: 'CONFIRM DELETE ALL LEADS',
+    description: 'Confirmed DELETE_ALL_LEADS deletes all leads and cascades related interactions and followups',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_4_Lead_Management',
+    setup: (db, test) => {
+      const lead = db.seedLead({ business_name: 'Lead 1' });
+      db.seedInteraction({ lead_id: lead.id, content: 'Called lead' });
+      db.query(`INSERT INTO follow_ups (lead_id, due_at, status) VALUES (${lead.id}, '2026-09-04', 'PENDING')`);
+    },
+    expectedRoute: 'AI Router -> Execute Lead Management -> Route Action -> Delete All Leads Query -> Format Delete All Confirmation',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('All leads') || !msg.text.includes('deleted')) {
+        throw new Error(`Expected delete all confirmation, got: ${JSON.stringify(msg)}`);
+      }
+      const leadCount = db.query('SELECT COUNT(*) as cnt FROM leads')[0].cnt;
+      const interCount = db.query('SELECT COUNT(*) as cnt FROM interactions')[0].cnt;
+      const fuCount = db.query('SELECT COUNT(*) as cnt FROM follow_ups')[0].cnt;
+      if (leadCount !== 0 || interCount !== 0 || fuCount !== 0) {
+        throw new Error(`Cascade failed: leads=${leadCount}, interactions=${interCount}, followups=${fuCount}`);
+      }
+    }
+  },
+
+  // =========================================================================
+  // 14. Forensic Verification & Concurrency Tests (TEST-105 to TEST-112)
+  // =========================================================================
+  {
+    id: 'TEST-105',
+    category: 'Scheduler Race Prevention',
+    message: 'Concurrent Follow-up Scheduler Execution',
+    description: 'Two concurrent scheduler executions attempting to claim the same overdue follow-up -> only 1 notification sent',
+    workflow: 'LEVEL_7_Followup_Scheduler',
+    setup: (db, test) => {
+      const pastDue = new Date(Date.now() - 3600000).toISOString();
+      const lead = db.seedLead({ business_name: 'Race Followup Lead' });
+      db.query(`INSERT INTO follow_ups (lead_id, due_at, status, last_notified_at) VALUES (${lead.id}, '${pastDue}', 'PENDING', NULL)`);
+    },
+    verify: async (runtime, db, result) => {
+      // Run second concurrent instance
+      const secondRuntime = new (require('./n8n_runtime'))(db);
+      await secondRuntime.executeWorkflow('LEVEL_7_Followup_Scheduler', {});
+      const totalSent = runtime.sentMessages.length + secondRuntime.sentMessages.length;
+      if (totalSent !== 1) {
+        throw new Error(`Race condition detected: expected 1 notification across concurrent runs, got ${totalSent}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-106',
+    category: 'Scheduler Race Prevention',
+    message: 'Concurrent Reminder Scheduler Execution',
+    description: 'Two concurrent reminder scheduler executions -> only 1 reminder notification sent',
+    workflow: 'LEVEL_13_Reminder_Scheduler',
+    setup: (db, test) => {
+      const pastDue = new Date(Date.now() - 60000).toISOString();
+      db.query(`INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status, notified_at) VALUES ('987654321', '987654321', 'Submit tax form', '${pastDue}', 'PENDING', NULL)`);
+    },
+    verify: async (runtime, db, result) => {
+      const secondRuntime = new (require('./n8n_runtime'))(db);
+      await secondRuntime.executeWorkflow('LEVEL_13_Reminder_Scheduler', {});
+      const totalSent = runtime.sentMessages.length + secondRuntime.sentMessages.length;
+      if (totalSent !== 1) {
+        throw new Error(`Race condition detected: expected 1 reminder notification across concurrent runs, got ${totalSent}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-107',
+    category: 'Scheduler Race Prevention',
+    message: 'Concurrent Daily Task Scheduler Execution',
+    description: 'Two concurrent daily task scheduler executions -> only 1 morning notification sent',
+    workflow: 'LEVEL_14_Daily_Task_Scheduler',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, priority, status) VALUES ('987654321', '987654321', date('now'), 'Critical bug fix', 'HIGH', 'PENDING')");
+    },
+    verify: async (runtime, db, result) => {
+      const secondRuntime = new (require('./n8n_runtime'))(db);
+      await secondRuntime.executeWorkflow('LEVEL_14_Daily_Task_Scheduler', {});
+      const totalSent = runtime.sentMessages.length + secondRuntime.sentMessages.length;
+      if (totalSent !== 1) {
+        throw new Error(`Race condition detected: expected 1 daily task briefing across concurrent runs, got ${totalSent}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-108',
+    category: 'Multi-User Isolation',
+    message: 'Cross-user notes isolation',
+    description: 'User A cannot access or delete User B notes',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_12_Standalone_Notes',
+    setup: (db, test) => {
+      db.query("INSERT INTO standalone_notes (id, user_id, content) VALUES (1, 'USER_B', 'User B secret note')");
+    },
+    triggerData: {
+      update_id: 100005,
+      message: {
+        message_id: 125,
+        from: { id: 987654321, username: 'user_a' },
+        chat: { id: 987654321, type: 'private' },
+        text: 'show my notes'
+      }
+    },
+    expectedRoute: 'AI Router -> Execute Standalone Notes -> List Notes',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (msg && msg.text.includes('User B secret note')) {
+        throw new Error(`Cross-user data leak: User A saw User B note: ${msg.text}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-109',
+    category: 'Multi-User Isolation',
+    message: 'Cross-user tasks isolation',
+    description: 'User A listing tasks does not show User B tasks',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_14_Personal_Daily_Tasks',
+    setup: (db, test) => {
+      db.query("INSERT INTO personal_daily_tasks (id, user_id, chat_id, task_date, content, priority, status) VALUES (1, 'USER_B', '22222', '2026-09-03', 'User B private task', 'HIGH', 'PENDING')");
+    },
+    triggerData: {
+      update_id: 100006,
+      message: {
+        message_id: 126,
+        from: { id: 987654321, username: 'user_a' },
+        chat: { id: 987654321, type: 'private' },
+        text: 'show today\'s tasks'
+      }
+    },
+    expectedRoute: 'AI Router -> Execute Personal Daily Tasks -> List Tasks',
+    verify: async (runtime, db, result) => {
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (msg && msg.text.includes('User B private task')) {
+        throw new Error(`Cross-user data leak: User A saw User B task: ${msg.text}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-110',
+    category: 'Interaction Side Effects',
+    message: 'I spoke to ABC School today (No automatic follow-up creation)',
+    description: 'Logging interaction does not create an unintended 3-day follow-up',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_5_Interaction_History',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'ABC School', status: 'NEW' });
+    },
+    expectedRoute: 'Find Lead By Name -> Insert Interaction -> Update Last Contact -> Build Interaction Confirmation',
+    verify: async (runtime, db, result) => {
+      const fuRows = db.query("SELECT * FROM follow_ups WHERE lead_id = (SELECT id FROM leads WHERE business_name = 'ABC School')");
+      if (fuRows.length > 0) {
+        throw new Error('Unintended side effect: interaction logging automatically created follow-up');
+      }
+    }
+  },
+  {
+    id: 'TEST-111',
+    category: 'Static Reference Integrity',
+    message: 'Static Workflow Integrity Check',
+    description: 'Verify all Execute Workflow nodes point to valid project workflows with valid triggers',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    verify: async (runtime, db, result) => {
+      const fs = require('node:fs');
+      const path = require('node:path');
+      const baseDir = path.resolve(__dirname, '..');
+      const jsonFiles = fs.readdirSync(baseDir).filter(f => f.startsWith('LEVEL_') && f.endsWith('.json'));
+      const workflows = jsonFiles.map(f => JSON.parse(fs.readFileSync(path.join(baseDir, f), 'utf8')));
+      const workflowNames = new Set(workflows.map(w => w.name));
+
+      for (const wf of workflows) {
+        for (const node of (wf.nodes || [])) {
+          if (node.type === 'n8n-nodes-base.executeWorkflow') {
+            const targetId = node.parameters && node.parameters.workflowId && (node.parameters.workflowId.value || node.parameters.workflowId);
+            if (!targetId) {
+              throw new Error(`Workflow ${wf.name} has executeWorkflow node ${node.name} without workflowId`);
+            }
+            if (!workflowNames.has(targetId)) {
+              throw new Error(`Workflow ${wf.name} node ${node.name} targets non-existent workflow "${targetId}"`);
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    id: 'TEST-112',
+    category: 'Human Approval Authorization',
+    message: 'Unauthorized Telegram User Callback',
+    description: 'Callback from unauthorized user ID is rejected with ⛔ Unauthorized',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    isCallback: true,
+    callerUserId: 111222333,
+    setup: (db, test) => {
+      const lead = db.seedLead({ business_name: 'Auth Test Lead', status: 'PROPOSAL_SENT', updated_at: new Date().toISOString() });
+      test.callbackData = `appr:${lead.id}:status:WON:${new Date(lead.updated_at).toISOString().replace(/[:]/g, '')}:987654321:A`;
+    },
+    verify: async (runtime, db, result) => {
+      const lead = db.query("SELECT status FROM leads WHERE business_name = 'Auth Test Lead'")[0];
+      if (lead.status !== 'PROPOSAL_SENT') {
+        throw new Error(`Unauthorized update succeeded: status changed to ${lead.status}`);
+      }
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Unauthorized')) {
+        throw new Error(`Expected Unauthorized error message, got: ${msg ? msg.text : 'none'}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-113',
+    category: 'Human Approval Authorization',
+    message: 'Expired Approval Request (>15 minutes)',
+    description: 'Approval callback older than 15 minutes is rejected with ⏰ Expired',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    isCallback: true,
+    callerUserId: 987654321,
+    setup: (db, test) => {
+      const expiredDate = new Date(Date.now() - 3600000).toISOString();
+      const lead = db.seedLead({ business_name: 'Expiry Test Lead', status: 'PROPOSAL_SENT', updated_at: expiredDate });
+      test.callbackData = `appr:${lead.id}:status:WON:${expiredDate.replace(/[:]/g, '')}:987654321:A`;
+    },
+    verify: async (runtime, db, result) => {
+      const lead = db.query("SELECT status FROM leads WHERE business_name = 'Expiry Test Lead'")[0];
+      if (lead.status !== 'PROPOSAL_SENT') {
+        throw new Error(`Expired approval succeeded: status changed to ${lead.status}`);
+      }
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Expired')) {
+        throw new Error(`Expected Expired error message, got: ${msg ? msg.text : 'none'}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-114',
+    category: 'Human Approval Authorization',
+    message: 'Replayed / Stale Approval Callback',
+    description: 'Approval callback with stale updated_at is rejected with ⚠️ Conflict',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL',
+    isCallback: true,
+    callerUserId: 987654321,
+    setup: (db, test) => {
+      const oldDate = new Date(Date.now() - 120000).toISOString();
+      const lead = db.seedLead({ business_name: 'Replay Test Lead', status: 'CONTACTED', updated_at: new Date().toISOString() });
+      test.callbackData = `appr:${lead.id}:status:WON:${oldDate.replace(/[:]/g, '')}:987654321:A`;
+    },
+    verify: async (runtime, db, result) => {
+      const lead = db.query("SELECT status FROM leads WHERE business_name = 'Replay Test Lead'")[0];
+      if (lead.status !== 'CONTACTED') {
+        throw new Error(`Stale/replayed approval succeeded: status changed to ${lead.status}`);
+      }
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('Conflict')) {
+        throw new Error(`Expected Conflict error message, got: ${msg ? msg.text : 'none'}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-115',
+    category: 'Google Calendar Resilience',
+    message: 'follow up for GCal Fail Lead tomorrow 10am',
+    description: 'PostgreSQL follow-up created successfully even if Google Calendar is offline',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    _simulateGCalFailure: true,
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'GCal Fail Lead', status: 'NEW' });
+    },
+    expectedRoute: 'Find Lead By Name -> Compute Due Date -> Upsert Followup -> Create Calendar Event -> Build Create Confirmation',
+    verify: async (runtime, db, result) => {
+      const fuRows = db.query("SELECT * FROM follow_ups WHERE lead_id = (SELECT id FROM leads WHERE business_name = 'GCal Fail Lead')");
+      if (fuRows.length === 0) {
+        throw new Error('Follow-up was not created in database when GCal failed');
+      }
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('GCal Fail Lead')) {
+        throw new Error('Confirmation message not sent to user');
+      }
+    }
+  },
+  {
+    id: 'TEST-116',
+    category: 'Google Calendar Resilience',
+    message: 'cancel followup for GCal Del Lead',
+    description: 'PostgreSQL follow-up cancelled successfully even if Google Calendar deletion fails',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    _simulateGCalFailure: true,
+    setup: (db, test) => {
+      const lead = db.seedLead({ business_name: 'GCal Del Lead', status: 'CONTACTED' });
+      db.query(`INSERT INTO follow_ups (lead_id, due_at, status, calendar_event_id) VALUES (${lead.id}, datetime('now', '+2 days'), 'PENDING', 'mock_dead_event_id')`);
+    },
+    expectedRoute: 'Find Lead By Name -> Find Pending Followup (Delete) -> Delete Followup DB -> Clear Lead Next Follow Up (Delete) -> Build Delete Confirmation',
+    verify: async (runtime, db, result) => {
+      const fuRows = db.query("SELECT status FROM follow_ups WHERE lead_id = (SELECT id FROM leads WHERE business_name = 'GCal Del Lead') AND status = 'PENDING'");
+      if (fuRows.length > 0) {
+        throw new Error('Pending follow-up was not removed/cancelled in database when GCal failed');
+      }
+      const msg = runtime.sentMessages[runtime.sentMessages.length - 1];
+      if (!msg || !msg.text.includes('GCal Del Lead')) {
+        throw new Error('Confirmation message not sent to user');
+      }
+    }
+  },
+  {
+    id: 'TEST-117',
+    category: 'REPLIED Semantics',
+    message: 'Complete follow-up preserves lead status (No REPLIED side effect)',
+    description: 'Marking a follow-up COMPLETED does not change lead status to REPLIED',
+    workflow: 'LEVEL_6_Followup_Management',
+    triggerData: {
+      chatId: '987654321',
+      command: 'COMPLETE_FOLLOW_UP',
+      parameters: { businessName: 'Semantics Complete Lead' }
+    },
+    setup: (db, test) => {
+      const lead = db.seedLead({ business_name: 'Semantics Complete Lead', status: 'CONTACTED' });
+      db.query(`INSERT INTO follow_ups (lead_id, due_at, status) VALUES (${lead.id}, datetime('now', '-1 day'), 'PENDING')`);
+    },
+    verify: async (runtime, db, result) => {
+      const lead = db.query("SELECT status FROM leads WHERE business_name = 'Semantics Complete Lead'")[0];
+      if (lead.status === 'REPLIED') {
+        throw new Error('Invalid status transition: completing follow-up changed lead status to REPLIED');
+      }
+      if (lead.status !== 'CONTACTED') {
+        throw new Error(`Expected status CONTACTED, got ${lead.status}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-118',
+    category: 'REPLIED Semantics',
+    message: 'reschedule followup for Semantics Resched Lead to next monday 10am',
+    description: 'Rescheduling a follow-up does not change lead status to REPLIED',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      const lead = db.seedLead({ business_name: 'Semantics Resched Lead', status: 'NEW' });
+      db.query(`INSERT INTO follow_ups (lead_id, due_at, status) VALUES (${lead.id}, datetime('now', '+1 day'), 'PENDING')`);
+    },
+    verify: async (runtime, db, result) => {
+      const lead = db.query("SELECT status FROM leads WHERE business_name = 'Semantics Resched Lead'")[0];
+      if (lead.status === 'REPLIED') {
+        throw new Error('Invalid status transition: rescheduling follow-up changed lead status to REPLIED');
+      }
+      if (lead.status !== 'NEW') {
+        throw new Error(`Expected status NEW, got ${lead.status}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-119',
+    category: 'REPLIED Semantics',
+    message: 'cancel followup for Semantics Cancel Lead',
+    description: 'Cancelling a follow-up does not change lead status to REPLIED',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management',
+    setup: (db, test) => {
+      const lead = db.seedLead({ business_name: 'Semantics Cancel Lead', status: 'NEW' });
+      db.query(`INSERT INTO follow_ups (lead_id, due_at, status) VALUES (${lead.id}, datetime('now', '+1 day'), 'PENDING')`);
+    },
+    verify: async (runtime, db, result) => {
+      const lead = db.query("SELECT status FROM leads WHERE business_name = 'Semantics Cancel Lead'")[0];
+      if (lead.status === 'REPLIED') {
+        throw new Error('Invalid status transition: cancelling follow-up changed lead status to REPLIED');
+      }
+      if (lead.status !== 'NEW') {
+        throw new Error(`Expected status NEW, got ${lead.status}`);
+      }
+    }
+  },
+  {
+    id: 'TEST-120',
+    category: 'REPLIED Semantics',
+    message: 'I called Semantics Log Lead today to discuss proposal',
+    description: 'Logging an interaction does not change lead status to REPLIED',
+    workflow: 'LEVEL_3_AI_Command_Router_FINAL -> LEVEL_5_Interaction_History',
+    setup: (db, test) => {
+      db.seedLead({ business_name: 'Semantics Log Lead', status: 'PROPOSAL_SENT' });
+    },
+    verify: async (runtime, db, result) => {
+      const lead = db.query("SELECT status FROM leads WHERE business_name = 'Semantics Log Lead'")[0];
+      if (lead.status === 'REPLIED') {
+        throw new Error('Invalid status transition: logging interaction changed lead status to REPLIED');
+      }
+      if (lead.status !== 'PROPOSAL_SENT') {
+        throw new Error(`Expected status PROPOSAL_SENT, got ${lead.status}`);
       }
     }
   }

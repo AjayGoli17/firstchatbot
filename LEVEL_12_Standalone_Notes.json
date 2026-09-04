@@ -25,7 +25,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const item = $input.first().json;\nconst cmd = item.command || \"ADD_STANDALONE_NOTE\";\nconst params = item.parameters || {};\nconst userId = String(item.userId || item.chatId || \"default\");\nconst chatId = item.chatId;\n\nlet content = (params && params.content) || (params && params.notes) || item.text || \"\";\nif (typeof content === \"string\") {\n  content = content.replace(/^(?:note down this|note down|save note|take a note|add note)[:\\s\\n]*/i, \"\").trim();\n  if (!content && item.text) content = item.text.trim();\n}\n\nlet noteId = null;\nif (params && (params.note_id || params.id)) {\n  const rawId = String(params.note_id || params.id).replace(/[^0-9]/g, \"\");\n  if (rawId) noteId = parseInt(rawId, 10);\n}\n\nconst confirmed = params && (params.confirmed === true || String(params.confirmed).toLowerCase() === \"true\");\n\nreturn [{\n  json: {\n    command: cmd,\n    chatId,\n    userId,\n    content,\n    noteId,\n    confirmed,\n    parameters: params,\n    text: item.text\n  }\n}];"
+        "jsCode": "const noteInput = $input.first().json;\nconst cmd = noteInput.command || \"ADD_STANDALONE_NOTE\";\nconst params = noteInput.parameters || {};\nconst userId = String(noteInput.userId || noteInput.chatId || \"\");\nconst chatId = noteInput.chatId;\n\nlet content = (params && params.content) || (params && params.notes) || noteInput.text || \"\";\nif (typeof content === \"string\") {\n  content = content.replace(/^(?:note down this|note down|save note|take a note|add note)[:\\s\\n]*/i, \"\").trim();\n  if (!content && noteInput.text) content = noteInput.text.trim();\n}\n\nlet noteId = null;\nif (params && (params.note_id || params.id)) {\n  const rawId = String(params.note_id || params.id).replace(/[^0-9]/g, \"\");\n  if (rawId) noteId = parseInt(rawId, 10);\n}\n\nconst confirmed = params && (params.confirmed === true || String(params.confirmed).toLowerCase() === \"true\");\n\nreturn [{\n  json: {\n    command: cmd,\n    chatId,\n    userId,\n    content,\n    noteId,\n    confirmed,\n    parameters: params,\n    text: noteInput.text\n  }\n}];"
       }
     },
     {
@@ -116,7 +116,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const trig = $(\"Extract Note Input\").first().json;\nconst items = $input.all().map(i => i.json).filter(i => i && i.id);\nif (items.length === 0) {\n  return [{ json: { chatId: trig.chatId, text: \"📝 You don't have any notes yet.\" } }];\n}\nconst lines = items.map((item, idx) => {\n  return `${idx + 1}.\\n${item.content}`;\n});\nconst text = `📝 <b>YOUR NOTES</b>\\n\\n${lines.join(\"\\n\\n\")}`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
+        "jsCode": "const trig = $(\"Extract Note Input\").first().json;\nconst noteRows = $input.all().map(i => i.json).filter(i => i && i.id);\nif (noteRows.length === 0) {\n  return [{ json: { chatId: trig.chatId, text: \"📝 You don't have any notes yet.\" } }];\n}\nconst lines = noteRows.map((nRow, idx) => {\n  return `${idx + 1}.\\n${nRow.content}`;\n});\nconst text = `📝 <b>YOUR NOTES</b>\\n\\n${lines.join(\"\\n\\n\")}`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
       }
     },
     {

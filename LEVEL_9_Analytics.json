@@ -40,7 +40,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT status, COUNT(*) AS cnt, COALESCE(SUM(deal_value),0) AS value FROM leads WHERE status NOT IN ('WON','LOST') GROUP BY status ORDER BY status",
+        "query": "SELECT status, currency, COUNT(*) AS cnt, COALESCE(SUM(deal_value),0) AS value FROM leads WHERE status NOT IN ('WON','LOST') GROUP BY status, currency ORDER BY status, currency",
         "options": {}
       },
       "credentials": {
@@ -62,7 +62,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const rows = $input.all().map(i => i.json);\nconst trig = $('Execute Workflow Trigger').first().json;\nconst lines = rows.filter(r => r.status).map(r => `\\u2022 ${r.status}: ${r.cnt} lead(s) \u2014 \\u20b9${Number(r.value).toLocaleString('en-IN')}`);\nconst total = rows.reduce((s,r) => s + Number(r.value || 0), 0);\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udcca <b>Pipeline</b>\\n${lines.join('\\n') || 'No active leads.'}\\n\\nTotal active pipeline: \\u20b9${total.toLocaleString('en-IN')}` } }];"
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst trig = $('Execute Workflow Trigger').first().json;\nconst lines = rows.filter(r => r.status).map(r => {\n  const cur = r.currency || 'INR';\n  const valStr = cur === 'INR' ? `\\u20b9${Number(r.value).toLocaleString('en-IN')}` : `${cur} ${Number(r.value).toLocaleString('en-US')}`;\n  return `\\u2022 ${r.status}: ${r.cnt} lead(s) \\u2014 ${valStr}`;\n});\nconst totalsByCur = {};\nfor (const r of rows) {\n  if (!r.status) continue;\n  const cur = r.currency || 'INR';\n  totalsByCur[cur] = (totalsByCur[cur] || 0) + Number(r.value || 0);\n}\nconst totalLines = Object.entries(totalsByCur).map(([cur, tot]) => {\n  const valStr = cur === 'INR' ? `\\u20b9${Number(tot).toLocaleString('en-IN')}` : `${cur} ${Number(tot).toLocaleString('en-US')}`;\n  return `Total active pipeline: ${valStr}`;\n}).join('\\n') || 'Total active pipeline: \\u20b90';\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udcca <b>Pipeline</b>\\n${lines.join('\\n') || 'No active leads.'}\\n\\n${totalLines}` } }];"
       }
     },
     {
@@ -76,7 +76,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT COUNT(*) AS won_count, COALESCE(SUM(deal_value),0) AS won_value FROM leads WHERE status = 'WON' AND won_at >= date_trunc('month', now())",
+        "query": "SELECT currency, COUNT(*) AS won_count, COALESCE(SUM(deal_value),0) AS won_value FROM leads WHERE status = 'WON' AND won_at >= date_trunc('month', now()) GROUP BY currency",
         "options": {}
       },
       "credentials": {
@@ -98,7 +98,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const r = $input.first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udcb0 <b>Revenue \u2014 This Month</b>\\nDeals won: ${r.won_count}\\nRevenue: \\u20b9${Number(r.won_value).toLocaleString('en-IN')}` } }];"
+        "jsCode": "const rows = $input.all().map(i => i.json).filter(r => r && (r.won_count !== undefined || r.currency));\nconst trig = $('Execute Workflow Trigger').first().json;\nif (rows.length === 0 || (!rows[0].won_count && !rows[0].won_value)) {\n  return [{ json: { chatId: trig.chatId, text: `\\ud83d\\udcb0 <b>Revenue \\u2014 This Month</b>\\nDeals won: 0\\nRevenue: \\u20b90` } }];\n}\nconst lines = rows.map(r => {\n  const cur = r.currency || 'INR';\n  const valStr = cur === 'INR' ? `\\u20b9${Number(r.won_value).toLocaleString('en-IN')}` : `${cur} ${Number(r.won_value).toLocaleString('en-US')}`;\n  return `Deals won: ${r.won_count}\\nRevenue: ${valStr}`;\n});\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udcb0 <b>Revenue \\u2014 This Month</b>\\n${lines.join('\\n\\n')}` } }];"
       }
     },
     {

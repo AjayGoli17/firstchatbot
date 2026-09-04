@@ -34,7 +34,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT f.id AS followup_id, f.lead_id, f.attempt_number, l.business_name FROM follow_ups f JOIN leads l ON l.id = f.lead_id WHERE f.status = 'PENDING' AND f.due_at <= now()",
+        "query": "WITH claim AS (\n  UPDATE follow_ups\n  SET last_notified_at = now()\n  WHERE id IN (\n    SELECT f.id\n    FROM follow_ups f\n    WHERE f.status = 'PENDING'\n      AND f.due_at <= now()\n      AND (f.last_notified_at IS NULL OR f.last_notified_at < now() - interval '12 hours')\n    ORDER BY f.due_at ASC\n    LIMIT 10\n    FOR UPDATE SKIP LOCKED\n  )\n  RETURNING id, lead_id, attempt_number, due_at\n)\nSELECT c.id AS followup_id, c.lead_id, c.attempt_number, l.business_name\nFROM claim c\nJOIN leads l ON l.id = c.lead_id",
         "options": {}
       },
       "credentials": {
@@ -147,9 +147,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE follow_ups SET due_at = now() + interval '12 hours' WHERE id = $1 AND status = 'PENDING'",
+        "query": "UPDATE follow_ups SET last_notified_at = now() WHERE id = $1 AND status = 'PENDING'",
         "options": {
-          "queryReplacement": "={{ [$('Build Reminder Payload').first().json.followupId] }}"
+          "queryReplacement": "={{ [ $json.followupId ] }}"
         }
       },
       "credentials": {

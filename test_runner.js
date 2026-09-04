@@ -43,6 +43,10 @@ async function runTestSuite() {
       test.setup(db, test);
     }
 
+    if (test._simulateGCalFailure) {
+      runtime.simulateGCalFailure = true;
+    }
+
     const testWorkflowName = test.workflow.split(' ')[0].trim();
     if (!workflowStats[testWorkflowName]) {
       workflowStats[testWorkflowName] = { total: 0, passed: 0, failed: 0 };
@@ -57,7 +61,7 @@ async function runTestSuite() {
         update_id: test.updateId || 10001,
         callback_query: {
           id: 'cb_' + Math.floor(Math.random() * 10000),
-          from: { id: 987654321, first_name: 'Tester' },
+          from: { id: test.callerUserId || 987654321, first_name: 'Tester' },
           message: {
             message_id: 100,
             chat: { id: 987654321 },
@@ -181,7 +185,9 @@ Automated end-to-end test execution report for the local n8n freelance operation
 
   for (const r of results) {
     const badge = r.status === 'PASS' ? '✅ PASS' : '❌ FAIL';
-    md += `| **${r.testId}** | ${r.category} | \`${r.message.replace(/\|/g, '\\|')}\` | ${r.expected.replace(/\|/g, '\\|')} | ${badge} |\n`;
+    const msgStr = (r.message || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    const expStr = (r.expected || r.workflow || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    md += `| **${r.testId}** | ${r.category} | \`${msgStr}\` | ${expStr} | ${badge} |\n`;
   }
 
   md += `

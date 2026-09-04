@@ -48,7 +48,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "o9wS8silxqFIed1B",
+          "id": "REPLACE_ME",
           "name": "Postgres account"
         }
       }
@@ -117,7 +117,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst val = j.deal_value ? `\\u20b9${Number(j.deal_value).toLocaleString('en-IN')}` : 'not set';\nreturn [{ json: { chatId: trig.chatId,\n  text: `\\u2705 Lead added: <b>${j.business_name}</b>\\nService: ${j.service || '\\u2014'}\\nValue: ${val}\\nStatus: ${j.status}` } }];"
+        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst sym = (j.currency === 'USD' ? '$' : (j.currency === 'EUR' ? '€' : (j.currency === 'GBP' ? '£' : (j.currency && j.currency !== 'INR' ? (j.currency + ' ') : '\\u20b9'))));\nconst val = j.deal_value ? `${sym}${Number(j.deal_value).toLocaleString('en-IN')}` : 'not set';\nreturn [{ json: { chatId: trig.chatId,\n  text: `\\u2705 Lead added: <b>${j.business_name}</b>\\nService: ${j.service || '\\u2014'}\\nValue: ${val}\\nStatus: ${j.status}` } }];"
       },
       "id": "13962678-6d65-4a55-b8d0-3048849e3151",
       "name": "Build Add Confirmation",
@@ -145,14 +145,14 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "o9wS8silxqFIed1B",
+          "id": "REPLACE_ME",
           "name": "Postgres account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst trig = $('Execute Workflow Trigger').first().json;\nif (!items.length || !items[0].json.business_name) {\n  return [{ json: { chatId: trig.chatId, text: 'No active leads yet.' } }];\n}\nconst lines = items.map(i => {\n  const d = i.json;\n  const val = d.deal_value ? `\\u20b9${Number(d.deal_value).toLocaleString('en-IN')}` : '\\u2014';\n  return `\\u2022 ${d.business_name} \u2014 ${d.status} \u2014 ${val}`;\n});\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udccb <b>Active Leads</b>\\n${lines.join('\\n')}` } }];"
+        "jsCode": "const leadRecords = $input.all();\nconst trig = $('Execute Workflow Trigger').first().json;\nif (!leadRecords.length || !leadRecords[0].json.business_name) {\n  return [{ json: { chatId: trig.chatId, text: 'No active leads yet.' } }];\n}\nconst lines = leadRecords.map(i => {\n  const d = i.json;\n  const sym = (d.currency === 'USD' ? '$' : (d.currency === 'EUR' ? '€' : (d.currency === 'GBP' ? '£' : (d.currency && d.currency !== 'INR' ? (d.currency + ' ') : '₹'))));\n  const val = d.deal_value ? `${sym}${Number(d.deal_value).toLocaleString('en-IN')}` : '—';\n  return `• ${d.business_name} — ${d.status} — ${val}`;\n});\nreturn [{ json: { chatId: trig.chatId, text: `📋 <b>Active Leads</b>\\n${lines.join('\\n')}` } }];"
       },
       "id": "92df2199-d66a-44ab-9be8-782e991ae28d",
       "name": "Format List",
@@ -215,7 +215,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst val = j.deal_value ? `\\u20b9${Number(j.deal_value).toLocaleString('en-IN')}` : '\\u2014';\nconst lastContact = j.last_contact_at ? new Date(j.last_contact_at).toDateString() : 'never';\nconst nextFollow = j.next_follow_up_at ? new Date(j.next_follow_up_at).toDateString() : 'none scheduled';\nreturn [{ json: { chatId: trig.chatId,\n  text: `\\ud83d\\udcc7 <b>${j.business_name}</b>\\nContact: ${j.contact_name || '\\u2014'}\\nEmail: ${j.email || '\\u2014'}\\nPhone: ${j.phone || '\\u2014'}\\nService: ${j.service || '\\u2014'}\\nStatus: ${j.status}\\nValue: ${val}\\nLast contact: ${lastContact}\\nNext follow-up: ${nextFollow}\\nNotes: ${j.notes || '\\u2014'}` } }];"
+        "jsCode": "const j = $json;\nconst trig = $('Execute Workflow Trigger').first().json;\nconst sym = (j.currency === 'USD' ? '$' : (j.currency === 'EUR' ? '€' : (j.currency === 'GBP' ? '£' : (j.currency && j.currency !== 'INR' ? (j.currency + ' ') : '\\u20b9'))));\nconst val = j.deal_value ? `${sym}${Number(j.deal_value).toLocaleString('en-IN')}` : '\\u2014';\nconst lastContact = j.last_contact_at ? new Date(j.last_contact_at).toDateString() : 'never';\nconst nextFollow = j.next_follow_up_at ? new Date(j.next_follow_up_at).toDateString() : 'none scheduled';\nreturn [{ json: { chatId: trig.chatId,\n  text: `\\ud83d\\udcc7 <b>${j.business_name}</b>\\nContact: ${j.contact_name || '\\u2014'}\\nEmail: ${j.email || '\\u2014'}\\nPhone: ${j.phone || '\\u2014'}\\nService: ${j.service || '\\u2014'}\\nStatus: ${j.status}\\nValue: ${val}\\nLast contact: ${lastContact}\\nNext follow-up: ${nextFollow}\\nNotes: ${j.notes || '\\u2014'}` } }];"
       },
       "id": "62ad5759-4a61-4324-9b31-73e185413852",
       "name": "Format Lead Detail",
@@ -476,7 +476,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\nif (!j.id) {\n  return [{ json: { chatId: $('Check Needs Approval (Status)').first().json.chatId,\n    text: `\\u26a0\\ufe0f Couldn't update status \u2014 the record changed since I read it. Please retry.` } }];\n}\nreturn [{ json: { chatId: $('Check Needs Approval (Status)').first().json.chatId,\n  text: `\\u2705 <b>${j.business_name}</b> moved to ${j.status}.` } }];"
+        "jsCode": "const j = $json;\nif (!j.id) {\n  return [{ json: { chatId: $('Check Needs Approval (Status)').first().json.chatId,\n    text: `\\u26a0\\ufe0f Couldn't update status — the record changed since I read it. Please retry.` } }];\n}\nreturn [{ json: { chatId: $('Check Needs Approval (Status)').first().json.chatId,\n  text: `\\u2705 <b>${j.business_name}</b> moved to ${j.status}.` } }];"
       },
       "id": "e2583474-ef9f-4512-a7b6-e57e0cedaeba",
       "name": "Status Confirmation",
@@ -644,7 +644,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\nconst src = $('Check Needs Approval (Value)').first().json;\nif (!j.id) {\n  return [{ json: { chatId: src.chatId, text: `\\u26a0\\ufe0f Couldn't update value \u2014 the record changed since I read it. Please retry.` } }];\n}\nreturn [{ json: { chatId: src.chatId, text: `\\u2705 <b>${j.business_name}</b> value updated to \\u20b9${Number(j.deal_value).toLocaleString('en-IN')}.` } }];"
+        "jsCode": "const j = $json;\nconst src = $('Check Needs Approval (Value)').first().json;\nif (!j.id) {\n  return [{ json: { chatId: src.chatId, text: `\\u26a0\\ufe0f Couldn't update value — the record changed since I read it. Please retry.` } }];\n}\nconst sym = (j.currency === 'USD' ? '$' : (j.currency === 'EUR' ? '€' : (j.currency === 'GBP' ? '£' : (j.currency && j.currency !== 'INR' ? (j.currency + ' ') : '\\u20b9'))));\nreturn [{ json: { chatId: src.chatId, text: `\\u2705 <b>${j.business_name}</b> value updated to ${sym}${Number(j.deal_value).toLocaleString('en-IN')}.` } }];"
       },
       "id": "e08d7d57-a1fa-494f-8127-46bb36ce03da",
       "name": "Value Confirmation",

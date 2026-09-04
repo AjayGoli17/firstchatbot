@@ -2,16 +2,16 @@
 
 Automated end-to-end test execution report for the local n8n freelance operations assistant project.
 
-- **Generated on:** 2026-09-03T11:39:57.008Z
-- **Execution Time:** 0.76s
+- **Generated on:** 2026-09-04T06:30:15.238Z
+- **Execution Time:** 1.17s
 - **Status:** **PASS**
 
 ---
 
 ## Test Summary
 
-- **Total tests:** 86
-- **Passed:** 86
+- **Total tests:** 121
+- **Passed:** 121
 - **Failed:** 0
 - **Skipped:** 0
 
@@ -21,12 +21,14 @@ Automated end-to-end test execution report for the local n8n freelance operation
 
 | Workflow | Tests | Passed | Failed | Success Rate |
 | :--- | ---: | ---: | ---: | ---: |
-| `LEVEL_3_AI_Command_Router_FINAL` | 79 | 79 | 0 | 100% |
-| `LEVEL_7_Followup_Scheduler` | 1 | 1 | 0 | 100% |
+| `LEVEL_3_AI_Command_Router_FINAL` | 105 | 105 | 0 | 100% |
+| `LEVEL_7_Followup_Scheduler` | 4 | 4 | 0 | 100% |
 | `LEVEL_11_Error_Handler` | 1 | 1 | 0 | 100% |
 | `LEVEL_2_Telegram_Test` | 1 | 1 | 0 | 100% |
-| `LEVEL_13_Reminder_Scheduler` | 1 | 1 | 0 | 100% |
-| `LEVEL_14_Daily_Task_Scheduler` | 3 | 3 | 0 | 100% |
+| `LEVEL_13_Reminder_Scheduler` | 2 | 2 | 0 | 100% |
+| `LEVEL_14_Daily_Task_Scheduler` | 5 | 5 | 0 | 100% |
+| `LEVEL_7_Followup_Callback` | 2 | 2 | 0 | 100% |
+| `LEVEL_6_Followup_Management` | 1 | 1 | 0 | 100% |
 
 ---
 
@@ -57,15 +59,15 @@ Automated end-to-end test execution report for the local n8n freelance operation
 | **TEST-021** | Follow-up Management | `Completed follow-up with ABC School` | Find Pending Followup -> Complete Followup -> Clear Lead Next Follow Up -> Build Complete Confirmation | ✅ PASS |
 | **TEST-022** | Follow-up Management | `Show my follow-ups` | Route Followup Command (LIST_FOLLOW_UPS) -> Query Follow-ups -> Format Follow-up List | ✅ PASS |
 | **TEST-023** | Follow-up Management | `Cancel the ABC School follow-up` | Find Pending Followup (Cancel) -> Cancel Followup -> Clear Lead Next Follow Up (Cancel) -> Build Cancel Confirmation | ✅ PASS |
-| **TEST-024** | Follow-up Callbacks | `fu:7:21:Y` | Route Callback Prefix (fu:) -> Execute Followup Callback -> Mark Completed And Update Lead -> Build Yes Confirmation | ✅ PASS |
-| **TEST-025** | Follow-up Callbacks | `fu:8:22:N` | Route Callback Prefix (fu:) -> Execute Followup Callback -> Create Next Followup -> Sync Lead Next Follow Up -> Build No Confirmation | ✅ PASS |
+| **TEST-024** | Follow-up Callbacks | `fu:6:21:Y` | Route Callback Prefix (fu:) -> Execute Followup Callback -> Mark Completed And Update Lead -> Build Yes Confirmation | ✅ PASS |
+| **TEST-025** | Follow-up Callbacks | `fu:7:22:N` | Route Callback Prefix (fu:) -> Execute Followup Callback -> Create Next Followup -> Sync Lead Next Follow Up -> Build No Confirmation | ✅ PASS |
 | **TEST-026** | Follow-up Scheduler | `Scheduled job checks overdue/due followups and sends Telegram reminder` | Get Due Followups -> Snooze To Avoid Duplicate Send -> Build Reminder Payload -> Send Reminder | ✅ PASS |
 | **TEST-027** | Daily Priorities | `What should I do today?` | AI Router -> Execute Daily Priorities -> Query Priorities -> Pipeline Total -> Format Daily Priorities | ✅ PASS |
 | **TEST-028** | Analytics | `Show my pipeline` | AI Router -> Execute Analytics -> Pipeline Query -> Format Pipeline Report | ✅ PASS |
 | **TEST-029** | Analytics | `Show my revenue this month` | AI Router -> Execute Analytics -> Revenue Query -> Format Revenue Report | ✅ PASS |
 | **TEST-030** | Analytics | `Show lead stats and conversion rate` | AI Router -> Execute Analytics -> Lead Analytics Query -> Format Lead Report | ✅ PASS |
-| **TEST-031** | Human Approval Flow | `appr:31:status:WON:2026-09-01T120000.000Z:A` | Route Callback Prefix (appr:) -> Execute Approval Callback -> Apply Approved Change -> Build Approve Message | ✅ PASS |
-| **TEST-032** | Human Approval Flow | `appr:32:status:WON:2026-09-01T120000.000Z:R` | Route Callback Prefix (appr:) -> Execute Approval Callback -> Build Reject Message | ✅ PASS |
+| **TEST-031** | Human Approval Flow | `appr:31:status:WON:2026-09-04T063014.432Z:987654321:A` | Route Callback Prefix (appr:) -> Execute Approval Callback -> Apply Approved Change -> Build Approve Message | ✅ PASS |
+| **TEST-032** | Human Approval Flow | `appr:32:status:WON:2026-09-04T063014.437Z:987654321:R` | Route Callback Prefix (appr:) -> Execute Approval Callback -> Build Reject Message | ✅ PASS |
 | **TEST-033** | Multi-Turn Clarification | `Add a lead` | Execute AI Command Router -> Needs Clarification -> Should Save Pending -> Upsert Pending Action -> Build Clarification Message | ✅ PASS |
 | **TEST-034** | Multi-Turn Clarification | `Zenith Academy` | Check Pending Action -> Has Pending Action (True) -> Merge Pending Answer -> Execute Lead Management -> Insert Lead | ✅ PASS |
 | **TEST-035** | Error Handling | `asdkjfh qwoeiur nonsense` | Execute AI Command Router (UNKNOWN) -> Needs Clarification -> Build Clarification Message | ✅ PASS |
@@ -91,32 +93,24 @@ Automated end-to-end test execution report for the local n8n freelance operation
 | **TEST-055** | Delete Functionality | `remove all followups` | AI Router -> Execute Followup Management -> Prompt Delete All Followups Confirmation | ✅ PASS |
 | **TEST-056** | Delete Functionality | `cancel followup for Makeup Academy` | AI Router -> Execute Followup Management -> Cancel/Delete follow-up | ✅ PASS |
 | **TEST-057** | Standalone Notes | `note down check out Tailwind CSS v4` | AI Router -> Execute Standalone Notes -> Insert Standalone Note -> Format Add Confirmation | ✅ PASS |
-| **TEST-058** | Standalone Notes | `note down this
-
-follow up for monday
-cbs school
-vk photography
-mghs school` | AI Router -> Execute Standalone Notes -> Insert Standalone Note -> Format Add Confirmation | ✅ PASS |
+| **TEST-058** | Standalone Notes | `note down this  follow up for monday cbs school vk photography mghs school` | AI Router -> Execute Standalone Notes -> Insert Standalone Note -> Format Add Confirmation | ✅ PASS |
 | **TEST-059** | Standalone Notes | `show my notes` | AI Router -> Execute Standalone Notes -> Query Standalone Notes -> Format Notes List | ✅ PASS |
 | **TEST-060** | Standalone Notes | `delete note 1` | AI Router -> Execute Standalone Notes -> Delete Standalone Note -> Format Delete Confirmation | ✅ PASS |
 | **TEST-061** | Standalone Notes | `delete note 9999` | AI Router -> Execute Standalone Notes -> Delete Standalone Note -> Format Delete Confirmation | ✅ PASS |
 | **TEST-062** | Standalone Notes | `delete note 1` | AI Router -> Execute Standalone Notes -> Delete Standalone Note -> Format Delete Confirmation | ✅ PASS |
 | **TEST-063** | Standalone Notes | `delete all notes` | AI Router -> Execute Standalone Notes -> Check Confirm Delete All -> Format Confirm Prompt | ✅ PASS |
 | **TEST-064** | Standalone Notes | `CONFIRM DELETE ALL NOTES` | AI Router -> Execute Standalone Notes -> Delete All Notes Query -> Format Delete All Confirmation | ✅ PASS |
-| **TEST-065** | Standalone Reminders | `remind me tomorrow to submit invoice` | AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Format Create Confirmation | ✅ PASS |
-| **TEST-066** | Standalone Reminders | `remind me on monday to follow up with Vivek School` | AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Format Create Confirmation | ✅ PASS |
+| **TEST-065** | Standalone Reminders | `Remind me tomorrow at 3 PM to call John about the project.` | AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Create Google Calendar Event -> Save GCal Event Id -> Format Create Success Confirmation | ✅ PASS |
+| **TEST-066** | Standalone Reminders | `Remind me on September 5 at 10 AM to send the proposal.` | AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Create Google Calendar Event -> Save GCal Event Id -> Format Create Success Confirmation | ✅ PASS |
 | **TEST-067** | Standalone Reminders | `show my reminders` | AI Router -> Execute Standalone Reminders -> Query Standalone Reminders -> Format Reminders List | ✅ PASS |
-| **TEST-068** | Standalone Reminders | `delete reminder 1` | AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation | ✅ PASS |
-| **TEST-069** | Standalone Reminders | `delete reminder 9999` | AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation | ✅ PASS |
-| **TEST-070** | Standalone Reminders | `delete reminder 1` | AI Router -> Execute Standalone Reminders -> Delete Standalone Reminder -> Format Delete Confirmation | ✅ PASS |
+| **TEST-068** | Standalone Reminders | `delete reminder 1` | AI Router -> Execute Standalone Reminders -> Find Reminder Before Delete -> Delete GCal Event -> Delete Standalone Reminder DB -> Format Delete Confirmation | ✅ PASS |
+| **TEST-069** | Standalone Reminders | `delete reminder 9999` | AI Router -> Execute Standalone Reminders -> Find Reminder Before Delete -> Format Delete Not Found | ✅ PASS |
+| **TEST-070** | Standalone Reminders | `delete reminder 1` | AI Router -> Execute Standalone Reminders -> Find Reminder Before Delete -> Format Delete Not Found | ✅ PASS |
 | **TEST-071** | Standalone Reminders | `delete all reminders` | AI Router -> Execute Standalone Reminders -> Check Confirm Delete All -> Format Confirm Prompt | ✅ PASS |
-| **TEST-072** | Standalone Reminders | `CONFIRM DELETE ALL REMINDERS` | AI Router -> Execute Standalone Reminders -> Delete All Reminders Query -> Format Delete All Confirmation | ✅ PASS |
+| **TEST-072** | Standalone Reminders | `CONFIRM DELETE ALL REMINDERS` | AI Router -> Execute Standalone Reminders -> Check Confirm Delete All -> Find All Reminders With GCal -> Delete All Reminders Query -> Format Delete All Confirmation | ✅ PASS |
 | **TEST-073** | Standalone Reminders | `Schedule Trigger (LEVEL_13_Reminder_Scheduler)` | Schedule Trigger -> Get Due Reminders -> Any Due -> Build Reminder Notification -> Send Reminder Message -> Mark Reminder Notified | ✅ PASS |
-| **TEST-074** | Personal Daily Tasks | `tasks for Sep 5
-
-DSA
-Do n8n project
-Complete website` | AI Router -> Execute Personal Daily Tasks -> Bulk Insert Tasks -> Format Bulk Add Confirmation | ✅ PASS |
+| **TEST-073B** | Standalone Reminders | `Remind me tomorrow at 5 PM to review contracts` | AI Router -> Execute Standalone Reminders -> Insert Standalone Reminder -> Create Google Calendar Event (Fails) -> Format Create Warning Confirmation | ✅ PASS |
+| **TEST-074** | Personal Daily Tasks | `tasks for Sep 5  DSA Do n8n project Complete website` | AI Router -> Execute Personal Daily Tasks -> Bulk Insert Tasks -> Format Bulk Add Confirmation | ✅ PASS |
 | **TEST-075** | Personal Daily Tasks | `show today's tasks` | AI Router -> Execute Personal Daily Tasks -> Query Tasks -> Format Tasks List | ✅ PASS |
 | **TEST-076** | Personal Daily Tasks | `show tasks for Sep 5` | AI Router -> Execute Personal Daily Tasks -> Query Tasks -> Format Tasks List | ✅ PASS |
 | **TEST-077** | Personal Daily Tasks | `add task for Sep 5: Review website` | AI Router -> Execute Personal Daily Tasks -> Insert Single Task -> Format Single Add Confirmation | ✅ PASS |
@@ -129,12 +123,46 @@ Complete website` | AI Router -> Execute Personal Daily Tasks -> Bulk Insert Tas
 | **TEST-084** | Personal Daily Tasks | `Morning Schedule Trigger (LEVEL_14_Daily_Task_Scheduler)` | Morning Schedule Trigger -> Get Today Incomplete Tasks -> Any Tasks -> Group Tasks By User -> Send Tasks Notification -> Mark Tasks Notified | ✅ PASS |
 | **TEST-085** | Personal Daily Tasks | `Morning Schedule Trigger with completed tasks` | Morning Schedule Trigger -> Get Today Incomplete Tasks -> Any Tasks -> Group Tasks By User -> Send Tasks Notification -> Mark Tasks Notified | ✅ PASS |
 | **TEST-086** | Personal Daily Tasks | `Morning Schedule Trigger when no tasks exist` | Morning Schedule Trigger -> Get Today Incomplete Tasks -> Any Tasks (False) | ✅ PASS |
+| **TEST-087** | Task Priority | `add task for today: Finish client proposal (HIGH)` | AI Router -> Execute Personal Daily Tasks -> Route Task Command -> Add Single Task -> Format Add Task Confirmation | ✅ PASS |
+| **TEST-088** | Task Priority | `add task for today: Review open PRs` | AI Router -> Execute Personal Daily Tasks -> Route Task Command -> Add Single Task -> Format Add Task Confirmation | ✅ PASS |
+| **TEST-089** | Task Priority | `update task 1 priority to HIGH` | AI Router -> Execute Personal Daily Tasks -> Route Task Command -> Update Task -> Format Update Task Confirmation | ✅ PASS |
+| **TEST-090** | Task Priority | `show today's tasks` | AI Router -> Execute Personal Daily Tasks -> Route Task Command -> Get Tasks For Date -> Format Tasks List | ✅ PASS |
+| **TEST-091** | Task Priority | `Morning Schedule Trigger with priorities` | Morning Schedule Trigger -> Get Today Incomplete Tasks -> Any Tasks -> Group Tasks By User -> Send Tasks Notification -> Mark Tasks Notified | ✅ PASS |
+| **TEST-092** | Natural Language Dates | `remind me to call ABC School tomorrow 10am` | AI Router -> Execute Followup Management -> Compute Due Date -> Insert Follow Up -> Build Create Confirmation | ✅ PASS |
+| **TEST-093** | Natural Language Dates | `remind me on Monday Sep 7 at 10am to call client` | AI Router -> Execute Standalone Reminders -> Route Reminder Command -> Extract Reminder Input -> Insert Standalone Reminder -> Format Create Confirmation | ✅ PASS |
+| **TEST-094** | Follow-up Scheduler | `Scheduler Notification Loop Test` | Check Overdue Follow-ups -> Find Overdue Followups -> Overdue Followups Found -> Send Followup Reminder Notification -> Mark Followups Notified | ✅ PASS |
+| **TEST-095** | Follow-up Scheduler | `Scheduler Notification Cooldown Test` | Check Overdue Follow-ups -> Find Overdue Followups -> Overdue Followups Found (False) | ✅ PASS |
+| **TEST-096** | Callback Validation | `Invalid Callback Payload (Wrong prefix)` | Telegram Trigger Callback -> Parse Callback Data -> Valid Callback -> Reject Invalid Callback -> Send Invalid Callback Alert | ✅ PASS |
+| **TEST-097** | Callback Validation | `Invalid Callback Payload (Non-integer ID)` | Telegram Trigger Callback -> Parse Callback Data -> Valid Callback -> Reject Invalid Callback -> Send Invalid Callback Alert | ✅ PASS |
+| **TEST-098** | Human Approval Concurrency | `appr:58:status:WON:2026-09-04T063015.048Z:987654321:A` | Route Callback Prefix (appr:) -> Execute Approval Callback -> Apply Approved Change -> Build Approve Message | ✅ PASS |
+| **TEST-099** | Human Approval Concurrency | `appr:59:status:WON:2026-09-04T062915.053Z:987654321:A` | Route Callback Prefix (appr:) -> Execute Approval Callback -> Apply Approved Change -> Build Approve Message | ✅ PASS |
+| **TEST-100** | Telegram Update Deduplication | `/help` | Telegram Trigger -> Check Update Deduplication -> Restore Context (Empty / Halt) | ✅ PASS |
+| **TEST-101** | User Scoping & Isolation | `Sunrise Academy` | Telegram Trigger -> Check Pending Action (Not found for user 987654321) -> AI Router | ✅ PASS |
+| **TEST-102** | Analytics Multi-Currency | `how much money did i make` | AI Router -> Execute Revenue Analytics -> Fetch Revenue Stats -> Format Revenue Report | ✅ PASS |
+| **TEST-103** | Destructive Action Safety | `delete all leads` | AI Router -> Execute Lead Management -> Route Action -> Prompt Confirm Delete All | ✅ PASS |
+| **TEST-104** | Destructive Action Safety | `CONFIRM DELETE ALL LEADS` | AI Router -> Execute Lead Management -> Route Action -> Delete All Leads Query -> Format Delete All Confirmation | ✅ PASS |
+| **TEST-105** | Scheduler Race Prevention | `Concurrent Follow-up Scheduler Execution` | LEVEL_7_Followup_Scheduler | ✅ PASS |
+| **TEST-106** | Scheduler Race Prevention | `Concurrent Reminder Scheduler Execution` | LEVEL_13_Reminder_Scheduler | ✅ PASS |
+| **TEST-107** | Scheduler Race Prevention | `Concurrent Daily Task Scheduler Execution` | LEVEL_14_Daily_Task_Scheduler | ✅ PASS |
+| **TEST-108** | Multi-User Isolation | `Cross-user notes isolation` | AI Router -> Execute Standalone Notes -> List Notes | ✅ PASS |
+| **TEST-109** | Multi-User Isolation | `Cross-user tasks isolation` | AI Router -> Execute Personal Daily Tasks -> List Tasks | ✅ PASS |
+| **TEST-110** | Interaction Side Effects | `I spoke to ABC School today (No automatic follow-up creation)` | Find Lead By Name -> Insert Interaction -> Update Last Contact -> Build Interaction Confirmation | ✅ PASS |
+| **TEST-111** | Static Reference Integrity | `Static Workflow Integrity Check` | LEVEL_3_AI_Command_Router_FINAL | ✅ PASS |
+| **TEST-112** | Human Approval Authorization | `Unauthorized Telegram User Callback` | LEVEL_3_AI_Command_Router_FINAL | ✅ PASS |
+| **TEST-113** | Human Approval Authorization | `Expired Approval Request (>15 minutes)` | LEVEL_3_AI_Command_Router_FINAL | ✅ PASS |
+| **TEST-114** | Human Approval Authorization | `Replayed / Stale Approval Callback` | LEVEL_3_AI_Command_Router_FINAL | ✅ PASS |
+| **TEST-115** | Google Calendar Resilience | `follow up for GCal Fail Lead tomorrow 10am` | Find Lead By Name -> Compute Due Date -> Upsert Followup -> Create Calendar Event -> Build Create Confirmation | ✅ PASS |
+| **TEST-116** | Google Calendar Resilience | `cancel followup for GCal Del Lead` | Find Lead By Name -> Find Pending Followup (Delete) -> Delete Followup DB -> Clear Lead Next Follow Up (Delete) -> Build Delete Confirmation | ✅ PASS |
+| **TEST-117** | REPLIED Semantics | `Complete follow-up preserves lead status (No REPLIED side effect)` | LEVEL_6_Followup_Management | ✅ PASS |
+| **TEST-118** | REPLIED Semantics | `reschedule followup for Semantics Resched Lead to next monday 10am` | LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management | ✅ PASS |
+| **TEST-119** | REPLIED Semantics | `cancel followup for Semantics Cancel Lead` | LEVEL_3_AI_Command_Router_FINAL -> LEVEL_6_Followup_Management | ✅ PASS |
+| **TEST-120** | REPLIED Semantics | `I called Semantics Log Lead today to discuss proposal` | LEVEL_3_AI_Command_Router_FINAL -> LEVEL_5_Interaction_History | ✅ PASS |
 
 ---
 
 ## Failures
 
-*None. All 86 automated test cases passed successfully.*
+*None. All 121 automated test cases passed successfully.*
 
 ---
 

@@ -33,7 +33,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const msg = $input.first().json.message || {};\nreturn [{\n  json: {\n    chatId: msg.chat ? msg.chat.id : null,\n    userId: msg.from ? msg.from.id : null,\n    text: msg.text || ''\n  }\n}];"
+        "jsCode": "const msg = $input.first().json.message || {};\nreturn [{\n  json: {\n    chatId: msg.chat ? msg.chat.id : null,\n    userId: msg.from ? msg.from.id : null,\n    text: msg.text || msg.caption || ''\n  }\n}];"
       }
     },
     {

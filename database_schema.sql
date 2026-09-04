@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS follow_ups (
     due_at              TIMESTAMPTZ NOT NULL,
     attempt_number      INTEGER NOT NULL DEFAULT 1 CHECK (attempt_number >= 1),
     status              TEXT NOT NULL DEFAULT 'PENDING',
+    last_notified_at    TIMESTAMPTZ,
     calendar_event_id   TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at        TIMESTAMPTZ,
@@ -103,6 +104,7 @@ CREATE TABLE IF NOT EXISTS follow_ups (
 
 CREATE INDEX IF NOT EXISTS idx_followups_lead_id ON follow_ups(lead_id);
 CREATE INDEX IF NOT EXISTS idx_followups_due_status ON follow_ups(status, due_at);
+CREATE INDEX IF NOT EXISTS idx_followups_notified ON follow_ups(status, due_at, last_notified_at);
 
 -- Only one PENDING follow-up per lead at a time (prevents duplicate reminders)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_followups_one_pending_per_lead
@@ -125,17 +127,19 @@ CREATE INDEX IF NOT EXISTS idx_processed_updates_time ON processed_updates (proc
 
 -- ------------------------------------------------------------
 -- Table: pending_actions
--- One row per chat: the in-progress intent while a required field is
+-- User and chat scoped: the in-progress intent while a required field is
 -- still missing (e.g. "Add CBS School" -> waiting on "service"). Read
--- and cleared by LEVEL_3 on the next message from that chat; ignored
+-- and cleared by LEVEL_3 on the next message from that user/chat; ignored
 -- automatically after 15 minutes so it can never trap a chat forever.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS pending_actions (
-    chat_id    TEXT PRIMARY KEY,
+    chat_id    TEXT NOT NULL,
+    user_id    TEXT NOT NULL DEFAULT '',
     command    TEXT NOT NULL,
     parameters JSONB NOT NULL DEFAULT '{}'::jsonb,
     missing    JSONB NOT NULL DEFAULT '[]'::jsonb,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (chat_id, user_id)
 );
 
 -- ------------------------------------------------------------
@@ -167,26 +171,34 @@ CREATE TABLE IF NOT EXISTS standalone_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_standalone_notes_user ON standalone_notes(user_id, created_at DESC);
 
+DROP TRIGGER IF EXISTS trg_standalone_notes_updated_at ON standalone_notes;
+CREATE TRIGGER trg_standalone_notes_updated_at
+    BEFORE UPDATE ON standalone_notes
+    FOR EACH ROW
+    EXECUTE FUNCTION set_updated_at();
+
 -- ------------------------------------------------------------
 -- Table: standalone_reminders (LEVEL 13)
 -- Independent personal time-based reminders.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS standalone_reminders (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         TEXT NOT NULL,
-    chat_id         TEXT NOT NULL,
-    content         TEXT NOT NULL,
-    reminder_at     TIMESTAMPTZ NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'PENDING',
-    notified_at     TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id                          BIGSERIAL PRIMARY KEY,
+    user_id                     TEXT NOT NULL,
+    chat_id                     TEXT NOT NULL,
+    content                     TEXT NOT NULL,
+    reminder_at                 TIMESTAMPTZ NOT NULL,
+    status                      TEXT NOT NULL DEFAULT 'PENDING',
+    notified_at                 TIMESTAMPTZ,
+    google_calendar_event_id    TEXT,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT chk_standalone_reminders_status CHECK (
         status IN ('PENDING','COMPLETED','CANCELLED')
     )
 );
 CREATE INDEX IF NOT EXISTS idx_standalone_reminders_user_due ON standalone_reminders(user_id, status, reminder_at);
 CREATE INDEX IF NOT EXISTS idx_standalone_reminders_due ON standalone_reminders(status, notified_at, reminder_at);
+CREATE INDEX IF NOT EXISTS idx_standalone_reminders_gcal ON standalone_reminders(google_calendar_event_id) WHERE google_calendar_event_id IS NOT NULL;
 
 DROP TRIGGER IF EXISTS trg_standalone_reminders_updated_at ON standalone_reminders;
 CREATE TRIGGER trg_standalone_reminders_updated_at
@@ -204,6 +216,7 @@ CREATE TABLE IF NOT EXISTS personal_daily_tasks (
     chat_id         TEXT NOT NULL,
     task_date       DATE NOT NULL DEFAULT CURRENT_DATE,
     content         TEXT NOT NULL,
+    priority        TEXT NOT NULL DEFAULT 'MEDIUM' CHECK (priority IN ('HIGH','MEDIUM','LOW')),
     status          TEXT NOT NULL DEFAULT 'PENDING',
     notified_at     TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -212,7 +225,7 @@ CREATE TABLE IF NOT EXISTS personal_daily_tasks (
         status IN ('PENDING','COMPLETED','CANCELLED')
     )
 );
-CREATE INDEX IF NOT EXISTS idx_personal_daily_tasks_user_date ON personal_daily_tasks(user_id, task_date, status);
+CREATE INDEX IF NOT EXISTS idx_personal_daily_tasks_user_date ON personal_daily_tasks(user_id, task_date, priority, status);
 CREATE INDEX IF NOT EXISTS idx_personal_daily_tasks_due ON personal_daily_tasks(task_date, status, notified_at);
 
 DROP TRIGGER IF EXISTS trg_personal_daily_tasks_updated_at ON personal_daily_tasks;

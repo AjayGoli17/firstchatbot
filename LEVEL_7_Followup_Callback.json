@@ -25,7 +25,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const j = $json;\nconst parts = (j.callbackData || '').split(':'); // fu:<followupId>:<leadId>:<Y|N>\nreturn [{ json: { followupId: Number(parts[1]), leadId: Number(parts[2]), answer: parts[3],\n  chatId: j.chatId, callbackQueryId: j.callbackQueryId, messageId: j.messageId } }];"
+        "jsCode": "const j = $json;\nconst data = String(j.callbackData || '');\nconst parts = data.split(':'); // fu:<followupId>:<leadId>:<Y|N>\n\nconst isValidPrefix = parts[0] === 'fu';\nconst isValidLength = parts.length === 4;\nconst followupId = Number(parts[1]);\nconst leadId = Number(parts[2]);\nconst answer = parts[3] ? parts[3].toUpperCase().trim() : '';\nconst isValidAnswer = answer === 'Y' || answer === 'N';\nconst isValidIds = Number.isInteger(followupId) && followupId > 0 && Number.isInteger(leadId) && leadId > 0;\n\nconst isMalformed = !isValidPrefix || !isValidLength || !isValidAnswer || !isValidIds;\n\nreturn [{\n  json: {\n    followupId: isMalformed ? 0 : followupId,\n    leadId: isMalformed ? 0 : leadId,\n    answer: isMalformed ? 'INVALID' : answer,\n    isMalformed,\n    chatId: j.chatId,\n    callbackQueryId: j.callbackQueryId,\n    messageId: j.messageId\n  }\n}];"
       }
     },
     {
@@ -92,7 +92,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const p = $('Parse Callback Data').first().json;\nreturn [{ json: { chatId: p.chatId, callbackQueryId: p.callbackQueryId, messageId: p.messageId,\n  text: '\\u2139\\ufe0f This reminder was already handled.', answered: true } }];"
+        "jsCode": "const p = $('Parse Callback Data').first().json;\nconst text = p.isMalformed ? '⚠️ Invalid or malformed reminder callback.' : '\\u2139\\ufe0f This reminder was already handled.';\nreturn [{ json: { chatId: p.chatId, callbackQueryId: p.callbackQueryId, messageId: p.messageId, text, answered: true } }];"
       }
     },
     {
@@ -135,7 +135,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH upd AS (UPDATE follow_ups SET status = 'COMPLETED', completed_at = now() WHERE id = $1 AND status = 'PENDING' RETURNING lead_id) UPDATE leads SET status = 'REPLIED', last_contact_at = now(), next_follow_up_at = NULL WHERE id = (SELECT lead_id FROM upd) RETURNING business_name",
+        "query": "WITH upd AS (UPDATE follow_ups SET status = 'COMPLETED', completed_at = now() WHERE id = $1 AND status = 'PENDING' RETURNING lead_id) UPDATE leads SET status = CASE WHEN status IN ('NEW', 'CONTACTED') THEN 'REPLIED' ELSE status END, last_contact_at = now(), next_follow_up_at = NULL WHERE id = (SELECT lead_id FROM upd) RETURNING business_name",
         "options": {
           "queryReplacement": "={{ [$('Parse Callback Data').first().json.followupId] }}"
         }

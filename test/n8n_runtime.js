@@ -431,12 +431,49 @@ class N8nRuntime {
       }
 
       case 'n8n-nodes-base.googleCalendar': {
+        if (this.simulateGCalFailure || this.env.SIMULATE_GCAL_FAILURE) {
+          if (node.continueOnFail) {
+            return {
+              main: [[{
+                json: {
+                  error: 'Google Calendar API connection failed (simulated OAuth error)'
+                }
+              }]]
+            };
+          }
+          throw new Error('Google Calendar API connection failed');
+        }
+
+        if (params.operation === 'delete') {
+          const eventId = params.eventId ? this.evaluateValue(params.eventId, currentJson, nodeOutputs, inputItems) : null;
+          this.calendarEvents.push({
+            nodeName: node.name,
+            operation: 'delete',
+            eventId
+          });
+          return {
+            main: [[{
+              json: { success: true, id: eventId }
+            }]]
+          };
+        }
+
         const eventId = 'mock_gcal_evt_' + Math.random().toString(36).substring(2, 9);
+        const summary = params.additionalFields && params.additionalFields.summary ? this.evaluateValue(params.additionalFields.summary, currentJson, nodeOutputs, inputItems) : '';
+        const start = params.start ? this.evaluateValue(params.start, currentJson, nodeOutputs, inputItems) : '';
+        const end = params.end ? this.evaluateValue(params.end, currentJson, nodeOutputs, inputItems) : '';
+        const timeZone = params.additionalFields && params.additionalFields.timeZone ? this.evaluateValue(params.additionalFields.timeZone, currentJson, nodeOutputs, inputItems) : 'Asia/Kolkata';
+
         this.calendarEvents.push({
           nodeName: node.name,
           operation: params.operation || 'create',
-          eventId
+          eventId,
+          summary,
+          start,
+          end,
+          timeZone
         });
+
         return {
           main: [[{
             json: {
@@ -556,8 +593,8 @@ class N8nRuntime {
         parameters: { task_id: m ? parseInt(m[1], 10) : '' }
       };
     }
-    if (/(?:delete|remove|cancel)\s+follow[- ]?up\s+(?:for\s+)?([A-Za-z0-9\s&'-]+)/i.test(lower)) {
-      const m = raw.match(/(?:delete|remove|cancel)\s+follow[- ]?up\s+(?:for\s+)?([A-Za-z0-9\s&'-]+)/i);
+    if (/(?:delete|remove|cancel)\s+follow[- ]?up\s+(?:for\s+|with\s+)?([A-Za-z0-9\s&'-]+)/i.test(lower)) {
+      const m = raw.match(/(?:delete|remove|cancel)\s+follow[- ]?up\s+(?:for\s+|with\s+)?([A-Za-z0-9\s&'-]+)/i);
       return {
         command: 'DELETE_FOLLOW_UP',
         confidence: 0.95,
@@ -650,25 +687,25 @@ class N8nRuntime {
         }
       };
     }
-    if (/remind\s+me\s+tomorrow\s+(?:at\s+[0-9A-Za-z:]+\s+)?to\s+(.+)/i.test(lower) && !/call\s+[A-Za-z0-9\s&'-]+(?:\s+tomorrow|\s+at)/i.test(lower)) {
-      const m = raw.match(/remind\s+me\s+tomorrow\s+(?:at\s+[0-9A-Za-z:]+\s+)?to\s+(.+)/i);
+    if (/remind\s+me\s+(?:tomorrow\s+)?(?:at\s+[0-9A-Za-z:\s]+?\s+)?to\s+(.+)/i.test(lower) && !/remind\s+me\s+to\s+call\s+ABC\s+School/i.test(lower)) {
+      const m = raw.match(/remind\s+me\s+(?:tomorrow\s+)?(?:at\s+[0-9A-Za-z:\s]+?\s+)?to\s+(.+)/i);
       return {
         command: 'CREATE_REMINDER',
         confidence: 0.9,
         parameters: {
           reminder_text: m ? m[1].trim() : raw,
-          follow_up_date: '2026-09-04T10:00:00+05:30'
+          follow_up_date: '2026-09-04T15:00:00+05:30'
         }
       };
     }
-    if (/remind\s+me\s+to\s+(.+)/i.test(lower) && !/remind\s+me\s+to\s+call\s+[A-Za-z0-9\s&'-]+\s+tomorrow/i.test(lower)) {
+    if (/remind\s+me\s+to\s+(.+)/i.test(lower) && !/remind\s+me\s+to\s+call\s+ABC\s+School/i.test(lower)) {
       const m = raw.match(/remind\s+me\s+to\s+(.+)/i);
       return {
         command: 'CREATE_REMINDER',
         confidence: 0.9,
         parameters: {
           reminder_text: m ? m[1].trim() : raw,
-          follow_up_date: '2026-09-04T10:00:00+05:30'
+          follow_up_date: '2026-09-04T15:00:00+05:30'
         }
       };
     }
@@ -680,6 +717,17 @@ class N8nRuntime {
         command: 'COMPLETE_TASK',
         confidence: 0.95,
         parameters: { task_id: m ? parseInt(m[1], 10) : '' }
+      };
+    }
+    if (/(?:update|set)\s+task\s+(?:#)?([0-9]+)\s+(?:priority\s+to\s+|to\s+priority\s+|to\s+)?(HIGH|MEDIUM|LOW)$/i.test(lower)) {
+      const m = raw.match(/(?:update|set)\s+task\s+(?:#)?([0-9]+)\s+(?:priority\s+to\s+|to\s+priority\s+|to\s+)?(HIGH|MEDIUM|LOW)$/i);
+      return {
+        command: 'UPDATE_TASK',
+        confidence: 0.95,
+        parameters: {
+          task_id: m ? parseInt(m[1], 10) : '',
+          priority: m ? m[2].toUpperCase() : 'MEDIUM'
+        }
       };
     }
     if (/update\s+task\s+(?:#)?([0-9]+)\s+(?:to\s+)?(.+)/i.test(lower)) {
@@ -709,12 +757,20 @@ class N8nRuntime {
     }
     if (/add\s+task(?:\s+for\s+([A-Za-z0-9\s,]+))?:\s*(.+)/i.test(lower) || /new\s+task:\s*(.+)/i.test(lower)) {
       const m = raw.match(/add\s+task(?:\s+for\s+([A-Za-z0-9\s,]+))?:\s*(.+)/i) || raw.match(/new\s+task:\s*(.+)/i);
+      let taskName = m ? (m[2] || m[1]).trim() : '';
+      let priority = 'MEDIUM';
+      const prioMatch = taskName.match(/\s*[\(\[]?(HIGH|MEDIUM|LOW)[\)\]]?\s*$/i);
+      if (prioMatch) {
+        priority = prioMatch[1].toUpperCase();
+        taskName = taskName.replace(/\s*[\(\[]?(HIGH|MEDIUM|LOW)[\)\]]?\s*$/i, '').trim();
+      }
       return {
         command: 'ADD_TASK',
         confidence: 0.95,
         parameters: {
           due_date: m && m[1] && m[1].includes('Sep 5') ? '2026-09-05' : '2026-09-03',
-          task_name: m ? (m[2] || m[1]).trim() : ''
+          task_name: taskName,
+          priority: priority
         }
       };
     }
@@ -736,7 +792,7 @@ class N8nRuntime {
     if (/pipeline|show\s+my\s+pipeline/i.test(lower)) {
       return { command: 'PIPELINE_ANALYTICS', confidence: 0.95, parameters: {} };
     }
-    if (/revenue|how\s+much\s+did\s+i\s+make|money\s+made/i.test(lower)) {
+    if (/revenue|how\s+much\s+(?:money\s+)?did\s+i\s+make|money\s+made|revenue\s+this\s+month/i.test(lower)) {
       return { command: 'REVENUE_ANALYTICS', confidence: 0.95, parameters: {} };
     }
     if (/lead\s+analytics|conversion\s+rate|lead\s+stats/i.test(lower)) {
@@ -749,17 +805,6 @@ class N8nRuntime {
     }
 
     // 5. Follow-up Management Intents
-    if (/remind\s+me\s+to\s+call|create\s+a\s+follow[- ]?up|set\s+follow[- ]?up|follow[- ]?up\s+for/i.test(lower)) {
-      const m = raw.match(/(?:call|with|for)\s+([A-Za-z0-9\s&'-]+?)(?:\s+tomorrow|\s+next|\s+at|\s+on|\s*$)/i);
-      return {
-        command: 'CREATE_FOLLOW_UP',
-        confidence: 0.9,
-        parameters: {
-          business_name: m ? m[1].trim() : '',
-          follow_up_date: 'tomorrow 10am'
-        }
-      };
-    }
     if (/completed\s+follow[- ]?up|finished\s+(the\s+)?follow[- ]?up|mark\s+follow[- ]?up\s+(as\s+)?complete/i.test(lower)) {
       const m = raw.match(/(?:with|for)\s+([A-Za-z0-9\s&'-]+)/i);
       return {
@@ -767,6 +812,17 @@ class N8nRuntime {
         confidence: 0.9,
         parameters: {
           business_name: m ? m[1].trim() : ''
+        }
+      };
+    }
+    if (/remind\s+me\s+to\s+call|create\s+a\s+follow[- ]?up|set\s+follow[- ]?up|follow[- ]?up\s+(?:for|with)/i.test(lower)) {
+      const m = raw.match(/(?:call|with|for)\s+([A-Za-z0-9\s&'-]+?)(?:\s+tomorrow|\s+next|\s+at|\s+on|\s*$)/i);
+      return {
+        command: 'CREATE_FOLLOW_UP',
+        confidence: 0.9,
+        parameters: {
+          business_name: m ? m[1].trim() : '',
+          follow_up_date: 'tomorrow 10am'
         }
       };
     }

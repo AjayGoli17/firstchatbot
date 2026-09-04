@@ -25,7 +25,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const item = $input.first().json;\nconst cmd = item.command || \"LIST_TASKS\";\nconst params = item.parameters || {};\nconst userId = String(item.userId || item.chatId || \"default\");\nconst chatId = item.chatId;\n\n// 1. Resolve task date\nlet taskDate = params.task_date || params.due_date || params.date;\nif (!taskDate) {\n  const now = new Date();\n  const todayIso = new Intl.DateTimeFormat(\"en-CA\", {\n    timeZone: \"Asia/Kolkata\",\n    year: \"numeric\",\n    month: \"2-digit\",\n    day: \"2-digit\"\n  }).format(now);\n  taskDate = todayIso;\n} else if (taskDate.includes(\"T\")) {\n  taskDate = taskDate.split(\"T\")[0];\n}\n\n// 2. Resolve task items\nlet taskList = [];\nif (Array.isArray(params.tasks) && params.tasks.length > 0) {\n  taskList = params.tasks.map(t => typeof t === \"string\" ? t : (t.content || t.task_name || \"\")).filter(Boolean);\n} else if (typeof params.tasks === \"string\") {\n  taskList = params.tasks.split(\"\\n\").map(t => t.trim().replace(/^[-*•0-9.)\\s]+/, \"\")).filter(Boolean);\n} else if (item.text && item.text.includes(\"\\n\")) {\n  const lines = item.text.split(\"\\n\").map(l => l.trim()).filter(Boolean);\n  const taskLines = lines.filter(l => !/^(?:tasks?\\s+for|daily\\s+tasks?|my\\s+tasks?|todo)/i.test(l));\n  taskList = taskLines.map(t => t.replace(/^[-*•0-9.)\\s]+/, \"\").trim()).filter(Boolean);\n}\n\nlet singleContent = params.task_name || params.content || \"\";\nif (!singleContent && taskList.length === 1) {\n  singleContent = taskList[0];\n} else if (!singleContent && item.text) {\n  singleContent = item.text.replace(/^(?:add\\s+task(?:\\s+for\\s+[A-Za-z0-9\\s,]+)?:?|new\\s+task:?|create\\s+task:?|update\\s+task\\s+[0-9]+(?:\\s+to)?:?)[:\\s]*/i, \"\").trim();\n}\n\nlet taskId = null;\nif (params.task_id || params.id) {\n  const rawId = String(params.task_id || params.id).replace(/[^0-9]/g, \"\");\n  if (rawId) taskId = parseInt(rawId, 10);\n}\n\nconst confirmed = params.confirmed === true || String(params.confirmed).toLowerCase() === \"true\";\n\nreturn [{\n  json: {\n    command: cmd,\n    chatId,\n    userId,\n    taskDate,\n    taskList,\n    singleContent,\n    taskId,\n    confirmed,\n    parameters: params,\n    text: item.text\n  }\n}];"
+        "jsCode": "const trigItem = $input.first().json;\nconst cmd = trigItem.command || \"LIST_TASKS\";\nconst params = trigItem.parameters || {};\nconst userId = String(trigItem.userId || trigItem.chatId || \"\");\nconst chatId = trigItem.chatId;\n\n// 1. Resolve task date\nlet taskDate = params.task_date || params.due_date || params.date;\nif (!taskDate && cmd !== \"DELETE_ALL_TASKS\") {\n  const now = new Date();\n  const todayIso = new Intl.DateTimeFormat(\"en-CA\", {\n    timeZone: \"Asia/Kolkata\",\n    year: \"numeric\",\n    month: \"2-digit\",\n    day: \"2-digit\"\n  }).format(now);\n  taskDate = todayIso;\n} else if (taskDate && typeof taskDate === \"string\" && taskDate.includes(\"T\")) {\n  taskDate = taskDate.split(\"T\")[0];\n} else if (!taskDate) {\n  taskDate = \"\";\n}\n\n// 2. Resolve priority\nlet priority = \"MEDIUM\";\nif (params.priority) {\n  const p = String(params.priority).toUpperCase().trim();\n  if ([\"HIGH\", \"MEDIUM\", \"LOW\"].includes(p)) priority = p;\n} else if (trigItem.text && /\\b(high|medium|low)\\s+priority\\b/i.test(trigItem.text)) {\n  const match = trigItem.text.match(/\\b(high|medium|low)\\s+priority\\b/i);\n  if (match) priority = match[1].toUpperCase();\n} else if (trigItem.text && /\\bpriority\\s+(high|medium|low)\\b/i.test(trigItem.text)) {\n  const match = trigItem.text.match(/\\bpriority\\s+(high|medium|low)\\b/i);\n  if (match) priority = match[1].toUpperCase();\n} else if (trigItem.text && /\\bto\\s+(high|medium|low)\\b/i.test(trigItem.text)) {\n  const match = trigItem.text.match(/\\bto\\s+(high|medium|low)\\b/i);\n  if (match) priority = match[1].toUpperCase();\n}\n\n// 3. Resolve task items\nlet taskList = [];\nif (Array.isArray(params.tasks) && params.tasks.length > 0) {\n  taskList = params.tasks.map(t => typeof t === \"string\" ? t : (t.content || t.task_name || \"\")).filter(Boolean);\n} else if (typeof params.tasks === \"string\") {\n  taskList = params.tasks.split(\"\\n\").map(t => t.trim().replace(/^[-*•0-9.)\\s]+/, \"\")).filter(Boolean);\n} else if (trigItem.text && trigItem.text.includes(\"\\n\")) {\n  const lines = trigItem.text.split(\"\\n\").map(l => l.trim()).filter(Boolean);\n  const taskLines = lines.filter(l => !/^(?:tasks?\\s+for|daily\\s+tasks?|my\\s+tasks?|todo)/i.test(l));\n  taskList = taskLines.map(t => t.replace(/^[-*•0-9.)\\s]+/, \"\").trim()).filter(Boolean);\n}\n\nlet singleContent = params.task_name || params.content || \"\";\nif (!singleContent && taskList.length === 1) {\n  singleContent = taskList[0];\n} else if (!singleContent && trigItem.text) {\n  singleContent = trigItem.text.replace(/^(?:add\\s+task(?:\\s+for\\s+[A-Za-z0-9\\s,]+)?:?|new\\s+task:?|create\\s+task:?|update\\s+task\\s+[0-9]+(?:\\s+to)?:?)[:\\s]*/i, \"\").trim();\n  singleContent = singleContent.replace(/\\b(?:priority\\s+(?:high|medium|low)|(?:high|medium|low)\\s+priority|to\\s+(?:high|medium|low))\\b/i, \"\").trim();\n}\n\nlet taskId = null;\nif (params.task_id || params.id) {\n  const rawId = String(params.task_id || params.id).replace(/[^0-9]/g, \"\");\n  if (rawId) taskId = parseInt(rawId, 10);\n}\n\nconst confirmed = params.confirmed === true || String(params.confirmed).toLowerCase() === \"true\";\n\nreturn [{\n  json: {\n    command: cmd,\n    chatId,\n    userId,\n    taskDate,\n    taskList,\n    singleContent,\n    priority,\n    taskId,\n    confirmed,\n    parameters: params,\n    text: trigItem.text\n  }\n}];"
       }
     },
     {
@@ -54,7 +54,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst list = trig.taskList.length > 0 ? trig.taskList : [trig.singleContent].filter(Boolean);\n\nreturn list.map(item => ({\n  json: {\n    userId: trig.userId,\n    chatId: String(trig.chatId),\n    taskDate: trig.taskDate,\n    content: item\n  }\n}));"
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst list = trig.taskList.length > 0 ? trig.taskList : [trig.singleContent].filter(Boolean);\n\nreturn list.map(item => ({\n  json: {\n    userId: trig.userId,\n    chatId: String(trig.chatId),\n    taskDate: trig.taskDate,\n    content: item,\n    priority: trig.priority || \"MEDIUM\"\n  }\n}));"
       }
     },
     {
@@ -68,9 +68,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content) VALUES ($1, $2, $3, $4) RETURNING id, task_date, content, status",
+        "query": "INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, priority) VALUES ($1, $2, $3, $4, $5) RETURNING id, task_date, content, priority, status",
         "options": {
-          "queryReplacement": "={{ [ $json.userId, $json.chatId, $json.taskDate, $json.content ] }}"
+          "queryReplacement": "={{ [ $json.userId, $json.chatId, $json.taskDate, $json.content, $json.priority ] }}"
         }
       },
       "credentials": {
@@ -106,7 +106,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, task_date, content, status FROM personal_daily_tasks WHERE user_id = $1 AND task_date = $2 ORDER BY status DESC, id ASC LIMIT 50",
+        "query": "SELECT id, task_date, content, priority, status FROM personal_daily_tasks WHERE user_id = $1 AND task_date = $2 ORDER BY CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END, status DESC, id ASC LIMIT 50",
         "options": {
           "queryReplacement": "={{ [ $json.userId, $json.taskDate ] }}"
         }
@@ -130,7 +130,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst items = $input.all().map(i => i.json).filter(i => i && i.id);\nif (items.length === 0) {\n  return [{ json: { chatId: trig.chatId, text: `📋 You have no tasks for ${trig.taskDate}.` } }];\n}\nconst lines = items.map((item, idx) => {\n  const icon = item.status === \"COMPLETED\" ? \"✅\" : \"▫️\";\n  return `${idx + 1}. (ID: #${item.id}) ${icon} ${item.content}`;\n});\nconst text = `📋 <b>TASKS FOR ${trig.taskDate}</b>\\n\\n${lines.join(\"\\n\")}`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst taskRecords = $input.all().map(i => i.json).filter(i => i && i.id);\nif (taskRecords.length === 0) {\n  return [{ json: { chatId: trig.chatId, text: `📋 You have no tasks for ${trig.taskDate}.` } }];\n}\nconst lines = taskRecords.map((t, idx) => {\n  const pBadge = t.priority === \"HIGH\" ? \" [HIGH]\" : (t.priority === \"LOW\" ? \" [LOW]\" : \"\");\n  const icon = t.status === \"COMPLETED\" ? \"✅\" : (t.priority === \"HIGH\" ? \"🔴\" : \"▫️\");\n  return `${idx + 1}. (ID: #${t.id}) ${icon} ${t.content}${pBadge}`;\n});\nconst text = `📋 <b>TASKS FOR ${trig.taskDate}</b>\\n\\n${lines.join(\"\\n\")}`;\nreturn [{ json: { chatId: trig.chatId, text } }];"
       }
     },
     {
@@ -144,9 +144,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content) VALUES ($1, $2, $3, $4) RETURNING id, task_date, content, status",
+        "query": "INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, priority) VALUES ($1, $2, $3, $4, $5) RETURNING id, task_date, content, priority, status",
         "options": {
-          "queryReplacement": "={{ [ $json.userId, String($json.chatId), $json.taskDate, $json.singleContent ] }}"
+          "queryReplacement": "={{ [ $json.userId, String($json.chatId), $json.taskDate, $json.singleContent, $json.priority ] }}"
         }
       },
       "credentials": {
@@ -168,7 +168,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst r = $input.first().json;\nif (!r || !r.id) {\n  return [{ json: { chatId: trig.chatId, text: \"⚠️ Failed to add task.\" } }];\n}\nreturn [{\n  json: {\n    chatId: trig.chatId,\n    text: `📋 <b>Task added!</b> (ID: #${r.id})\\n\\n<b>Date:</b> ${r.task_date}\\n<b>Task:</b> ${r.content}`,\n    taskId: r.id\n  }\n}];"
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst r = $input.first().json;\nif (!r || !r.id) {\n  return [{ json: { chatId: trig.chatId, text: \"⚠️ Failed to add task.\" } }];\n}\nreturn [{\n  json: {\n    chatId: trig.chatId,\n    text: `📋 <b>Task added!</b> (ID: #${r.id})\\n\\n<b>Date:</b> ${r.task_date}\\n<b>Task:</b> ${r.content}\\n<b>Priority:</b> ${r.priority || 'MEDIUM'}`,\n    taskId: r.id\n  }\n}];"
       }
     },
     {
@@ -182,9 +182,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE personal_daily_tasks SET content = COALESCE(NULLIF($3, ''), content), updated_at = now() WHERE id = $1 AND user_id = $2 RETURNING id, content, task_date, status",
+        "query": "UPDATE personal_daily_tasks SET content = COALESCE(NULLIF($3, ''), content), priority = CASE WHEN $4 IN ('HIGH','MEDIUM','LOW') THEN $4 ELSE priority END, updated_at = now() WHERE id = $1 AND user_id = $2 RETURNING id, content, priority, task_date, status",
         "options": {
-          "queryReplacement": "={{ [ $json.taskId, $json.userId, $json.singleContent ] }}"
+          "queryReplacement": "={{ [ $json.taskId, $json.userId, $json.singleContent, $json.priority ] }}"
         }
       },
       "credentials": {
@@ -206,7 +206,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst r = $input.first().json;\nif (r && r.id) {\n  return [{ json: { chatId: trig.chatId, text: `📋 Task #${r.id} updated: \"${r.content}\"` } }];\n}\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Task not found or doesn't belong to you.\" } }];"
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst r = $input.first().json;\nif (r && r.id) {\n  return [{ json: { chatId: trig.chatId, text: `📋 Task #${r.id} updated: \"${r.content}\" (Priority: ${r.priority || 'MEDIUM'})` } }];\n}\nreturn [{ json: { chatId: trig.chatId, text: \"⚠️ Task not found or doesn't belong to you.\" } }];"
       }
     },
     {
@@ -349,7 +349,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst count = $input.all().filter(i => i.json && i.json.id).length;\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ Deleted ${count} task(s) for ${trig.taskDate}.` } }];"
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst count = $input.all().filter(i => i.json && i.json.id).length;\nconst dateText = trig.taskDate ? ` for ${trig.taskDate}` : '';\nreturn [{ json: { chatId: trig.chatId, text: `🗑️ Deleted ${count} task(s)${dateText}. All your tasks have been cleared.` } }];"
       }
     },
     {
@@ -363,7 +363,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nreturn [{ json: { chatId: trig.chatId, text: `⚠️ Are you sure you want to delete all tasks for ${trig.taskDate}? This cannot be undone.\\n\\nReply with \"CONFIRM DELETE ALL TASKS\" to proceed.` } }];"
+        "jsCode": "const trig = $(\"Extract Task Input\").first().json;\nconst dateText = trig.taskDate ? ` for ${trig.taskDate}` : '';\nreturn [{ json: { chatId: trig.chatId, text: `⚠️ Are you sure you want to delete all tasks${dateText}? This cannot be undone.\\n\\nReply with \"CONFIRM DELETE ALL TASKS\" to proceed.` } }];"
       }
     }
   ],

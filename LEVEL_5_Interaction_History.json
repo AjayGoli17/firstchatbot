@@ -277,7 +277,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const items = $input.all();\nconst lead = $('Find Lead By Name').first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nif (!items.length || !items[0].json.interaction_type) {\n  return [{ json: { chatId: trig.chatId, text: `No history yet for <b>${lead.business_name}</b>.` } }];\n}\nconst lines = items.map(i => {\n  const d = i.json;\n  const date = new Date(d.interaction_date).toDateString();\n  return `\\u2022 [${date}] ${d.interaction_type}${d.content ? ': ' + d.content : ''}`;\n});\nreturn [{ json: { chatId: trig.chatId, text: `\\ud83d\\udcd6 <b>History \u2014 ${lead.business_name}</b>\\n${lines.join('\\n')}` } }];"
+        "jsCode": "const histRecords = $input.all();\nconst lead = $('Find Lead By Name').first().json;\nconst trig = $('Execute Workflow Trigger').first().json;\nif (!histRecords.length || !histRecords[0].json.interaction_type) {\n  return [{ json: { chatId: trig.chatId, text: `No history yet for <b>${lead.business_name}</b>.` } }];\n}\nconst lines = histRecords.map(i => {\n  const d = i.json;\n  const date = new Date(d.interaction_date).toDateString();\n  return `• [${date}] ${d.interaction_type}${d.content ? ': ' + d.content : ''}`;\n});\nreturn [{ json: { chatId: trig.chatId, text: `📖 <b>History — ${lead.business_name}</b>\\n${lines.join('\\n')}` } }];"
       }
     },
     {
@@ -509,7 +509,7 @@
       "main": [
         [
           {
-            "node": "Create Pending Followup If Absent",
+            "node": "Build Interaction Confirmation",
             "type": "main",
             "index": 0
           }

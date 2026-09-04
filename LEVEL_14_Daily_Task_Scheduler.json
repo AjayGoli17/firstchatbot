@@ -34,7 +34,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, user_id, chat_id, task_date, content FROM personal_daily_tasks WHERE status = 'PENDING' AND notified_at IS NULL AND task_date = now()::date ORDER BY user_id, id ASC",
+        "query": "WITH claim AS (\n  UPDATE personal_daily_tasks\n  SET notified_at = now(), updated_at = now()\n  WHERE id IN (\n    SELECT id\n    FROM personal_daily_tasks\n    WHERE status = 'PENDING'\n      AND notified_at IS NULL\n      AND task_date = now()::date\n    FOR UPDATE SKIP LOCKED\n  )\n  RETURNING id, user_id, chat_id, task_date, content, priority\n)\nSELECT id, user_id, chat_id, task_date, content, priority\nFROM claim\nORDER BY user_id, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END, id ASC",
         "options": {}
       },
       "credentials": {
@@ -85,7 +85,7 @@
       ],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const items = $input.all().map(i => i.json).filter(i => i && i.id);\nif (items.length === 0) return [];\n\nconst groups = {};\nfor (const item of items) {\n  const key = `${item.user_id}_${item.chat_id || \"\"}`;\n  if (!groups[key]) {\n    groups[key] = {\n      userId: item.user_id,\n      chatId: item.chat_id || $env.PERSONAL_CHAT_ID,\n      taskIds: [],\n      tasks: []\n    };\n  }\n  groups[key].taskIds.push(item.id);\n  groups[key].tasks.push(item.content);\n}\n\nreturn Object.values(groups).map(g => {\n  const lines = g.tasks.map((t, idx) => `${idx + 1}. ${t}`).join(\"\\n\");\n  return {\n    json: {\n      userId: g.userId,\n      chatId: g.chatId,\n      taskIds: g.taskIds,\n      text: `📋 <b>TODAY'S TASKS</b>\\n\\n${lines}`\n    }\n  };\n});"
+        "jsCode": "const taskRecords = $input.all().map(i => i.json).filter(i => i && i.id);\nif (taskRecords.length === 0) return [];\n\nconst groups = {};\nfor (const task of taskRecords) {\n  const key = `${task.user_id}_${task.chat_id || \"\"}`;\n  if (!groups[key]) {\n    groups[key] = {\n      userId: task.user_id,\n      chatId: task.chat_id || $env.PERSONAL_CHAT_ID,\n      taskIds: [],\n      tasks: []\n    };\n  }\n  groups[key].taskIds.push(task.id);\n  const pBadge = task.priority === \"HIGH\" ? \" [HIGH]\" : (task.priority === \"LOW\" ? \" [LOW]\" : \"\");\n  const icon = task.priority === \"HIGH\" ? \"🔴\" : \"▫️\";\n  groups[key].tasks.push(`${icon} ${task.content}${pBadge}`);\n}\n\nreturn Object.values(groups).map(g => {\n  const lines = g.tasks.map((t, idx) => `${idx + 1}. ${t}`).join(\"\\n\");\n  return {\n    json: {\n      userId: g.userId,\n      chatId: g.chatId,\n      taskIds: g.taskIds,\n      text: `📋 <b>TODAY'S TASKS</b>\\n\\n${lines}`\n    }\n  };\n});"
       }
     },
     {
@@ -124,8 +124,10 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE personal_daily_tasks SET notified_at = now(), updated_at = now() WHERE task_date = now()::date AND status = 'PENDING' AND notified_at IS NULL",
-        "options": {}
+        "query": "UPDATE personal_daily_tasks SET notified_at = now(), updated_at = now() WHERE user_id = $1 AND task_date = now()::date AND status = 'PENDING' AND notified_at IS NULL",
+        "options": {
+          "queryReplacement": "={{ [ $json.userId ] }}"
+        }
       },
       "credentials": {
         "postgres": {

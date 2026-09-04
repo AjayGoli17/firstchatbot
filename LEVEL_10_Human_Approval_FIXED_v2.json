@@ -30,7 +30,8 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\n// ISO timestamps contain colons, which collide with our ':' delimited callback_data.\n// Strip them out here; parsed back on the callback side by re-inserting them positionally.\nlet version = '';\nif (j.recordVersion) {\n  const d = new Date(j.recordVersion);\n  if (!isNaN(d.getTime())) {\n    version = d.toISOString().replace(/[:]/g, '');\n  }\n}\nconst base = `appr:${j.leadId}:${j.field}:${j.newValue}:${version}`;\nconst label = j.field === 'status' ? `${j.oldValue} \\u2192 ${j.newValue}` : `\\u20b9${Number(j.oldValue).toLocaleString('en-IN')} \\u2192 \\u20b9${Number(j.newValue).toLocaleString('en-IN')}`;\nreturn [{ json: {\n  chatId: j.chatId,\n  businessName: j.businessName,\n  fieldLabel: j.field === 'status' ? 'Status change' : 'Deal value change',\n  changeLabel: label,\n  callbackApprove: `${base}:A`,\n  callbackReject: `${base}:R`\n} }];"
+        "language": "javaScript",
+        "jsCode": "const j = $json;\n// ISO timestamps contain colons, which collide with our ':' delimited callback_data.\n// Strip them out here; parsed back on the callback side by re-inserting them positionally.\nlet version = '';\nif (j.recordVersion) {\n  const d = new Date(j.recordVersion);\n  if (!isNaN(d.getTime())) {\n    version = d.toISOString().replace(/[:]/g, '');\n  }\n}\nconst cur = j.currency || 'INR';\nconst fmtVal = v => (cur === 'INR' ? `\\u20b9${Number(v).toLocaleString('en-IN')}` : `${cur} ${Number(v).toLocaleString('en-US')}`);\nconst authorizedUserId = j.userId || j.chatId || '';\nconst base = `appr:${j.leadId}:${j.field}:${j.newValue}:${version}:${authorizedUserId}`;\nconst label = j.field === 'status' ? `${j.oldValue} \\u2192 ${j.newValue}` : `${fmtVal(j.oldValue)} \\u2192 ${fmtVal(j.newValue)}`;\nreturn [{ json: {\n  chatId: j.chatId,\n  businessName: j.businessName,\n  fieldLabel: j.field === 'status' ? 'Status change' : 'Deal value change',\n  changeLabel: label,\n  callbackApprove: `${base}:A`,\n  callbackReject: `${base}:R`\n} }];"
       },
       "id": "aaa17c5c-2a79-44bb-9efb-a168cdad7827",
       "name": "Build Approval Request",
@@ -83,14 +84,14 @@
       "webhookId": "542fb3c3-be35-4d79-8e08-905de4dea7da",
       "credentials": {
         "telegramApi": {
-          "id": "ANhhemYmmRjIkSZo",
+          "id": "REPLACE_ME",
           "name": "Telegram account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\nconst parts = (j.callbackData || '').split(':');\n// Re-insert the colons that were stripped out before the timestamp went into callback_data,\n// so this is a valid ISO timestamp again for comparisons and the SQL parameter.\nconst version = (parts[4] || '').replace(/T(\\d{2})(\\d{2})(\\d{2})/, 'T$1:$2:$3');\nreturn [{ json: {\n  leadId: Number(parts[1]), field: parts[2], newValue: parts[3], version, decision: parts[5],\n  chatId: j.chatId, callbackQueryId: j.callbackQueryId, messageId: j.messageId\n} }];"
+        "jsCode": "const j = $json;\nconst parts = (j.callbackData || '').split(':');\nlet leadId, field, newValue, versionStr, authorizedUserId, decision;\nif (parts.length >= 7) {\n  leadId = Number(parts[1]);\n  field = parts[2];\n  newValue = parts[3];\n  versionStr = parts[4] || '';\n  authorizedUserId = parts[5];\n  decision = parts[6];\n} else {\n  leadId = Number(parts[1]);\n  field = parts[2];\n  newValue = parts[3];\n  versionStr = parts[4] || '';\n  authorizedUserId = '';\n  decision = parts[5];\n}\nconst version = versionStr.replace(/T(\\d{2})(\\d{2})(\\d{2})/, 'T$1:$2:$3');\nconst callerUserId = j.fromId || j.userId || (j.callbackQuery && j.callbackQuery.from ? j.callbackQuery.from.id : null);\nreturn [{ json: {\n  leadId, field, newValue, version, authorizedUserId, callerUserId, decision,\n  chatId: j.chatId, callbackQueryId: j.callbackQueryId, messageId: j.messageId\n} }];"
       },
       "id": "5be33660-4c72-43d8-bc1f-c293f4662395",
       "name": "Parse Approval Callback",
@@ -120,14 +121,14 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "o9wS8silxqFIed1B",
+          "id": "REPLACE_ME",
           "name": "Postgres account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const p = $('Parse Approval Callback').first().json;\nconst cur = $json;\nconst notFound = !cur.id;\nconst curVersion = cur.updated_at ? new Date(cur.updated_at).toISOString() : '';\nconst stale = notFound || curVersion !== p.version;\nreturn [{ json: { ...p, currentBusinessName: cur.business_name, notFound, stale } }];"
+        "jsCode": "const p = $('Parse Approval Callback').first().json;\nconst cur = $json;\nconst notFound = !cur || !cur.id;\nconst curVersion = (cur && cur.updated_at) ? new Date(cur.updated_at).toISOString() : '';\nconst unauthorized = Boolean(p.authorizedUserId && p.callerUserId && String(p.authorizedUserId) !== String(p.callerUserId));\nlet expired = false;\nif (p.version) {\n  const parsedTime = new Date(p.version).getTime();\n  if (!isNaN(parsedTime) && Date.now() - parsedTime > 15 * 60 * 1000) {\n    expired = true;\n  }\n}\nconst isStale = notFound || (!unauthorized && !expired && curVersion && curVersion !== p.version);\nconst stale = unauthorized || expired || notFound || isStale;\nconst failureReason = unauthorized ? 'UNAUTHORIZED' : (expired ? 'EXPIRED' : (notFound ? 'NOT_FOUND' : (isStale ? 'STALE' : 'NONE')));\nreturn [{ json: { ...p, currentBusinessName: cur ? cur.business_name : '', notFound, unauthorized, expired, isStale, stale, failureReason } }];"
       },
       "id": "86cc6fb7-d155-4f79-b5e6-1108ea81e327",
       "name": "Check Staleness",
@@ -172,7 +173,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\nconst text = j.notFound\n  ? `\\u26a0\\ufe0f This lead no longer exists (it may have been deleted). No update made.`\n  : `\\u26a0\\ufe0f This record changed since the request was made. Please re-run the command to review the current value.`;\nreturn [{ json: { chatId: j.chatId, callbackQueryId: j.callbackQueryId, messageId: j.messageId, text } }];"
+        "jsCode": "const j = $json;\nlet text;\nif (j.failureReason === 'UNAUTHORIZED') {\n  text = `\\u26d4 <b>Unauthorized</b>: You do not have permission to approve or reject this change.`;\n} else if (j.failureReason === 'EXPIRED') {\n  text = `\\u23f0 <b>Expired</b>: This approval request has expired (15-minute limit). Please re-run the command.`;\n} else if (j.failureReason === 'NOT_FOUND') {\n  text = `\\u26a0\\ufe0f This lead no longer exists (it may have been deleted). No update made.`;\n} else {\n  text = `\\u26a0\\ufe0f <b>Conflict</b>: This record was already updated or modified concurrently. No changes applied.`;\n}\nreturn [{ json: { chatId: j.chatId, callbackQueryId: j.callbackQueryId, messageId: j.messageId, text } }];"
       },
       "id": "95cf5cf3-dbff-4423-8771-ea29464299fc",
       "name": "Build Stale Message",
@@ -232,9 +233,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET\n  status = CASE WHEN $2 = 'status' THEN $3 ELSE status END,\n  deal_value = CASE WHEN $2 = 'deal_value' THEN $3::text::numeric ELSE deal_value END,\n  won_at = CASE WHEN $2 = 'status' AND $3 = 'WON' THEN now() ELSE won_at END\nWHERE id = $1\nRETURNING *",
+        "query": "UPDATE leads SET\n  status = CASE WHEN $2 = 'status' THEN $3 ELSE status END,\n  deal_value = CASE WHEN $2 = 'deal_value' THEN $3::text::numeric ELSE deal_value END,\n  won_at = CASE WHEN $2 = 'status' AND $3 = 'WON' THEN now() ELSE won_at END,\n  updated_at = now()\nWHERE id = $1 AND ($4 = '' OR updated_at = $4::timestamptz)\nRETURNING *",
         "options": {
-          "queryReplacement": "={{ [$json.leadId, $json.field, $json.newValue] }}"
+          "queryReplacement": "={{ [$json.leadId, $json.field, $json.newValue, $json.version || ''] }}"
         }
       },
       "id": "e46d07a7-f867-42d7-82bb-a0003b0ddc21",
@@ -248,14 +249,14 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "o9wS8silxqFIed1B",
+          "id": "REPLACE_ME",
           "name": "Postgres account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const original = $('Check Staleness').item.json;\nconst j = $json;\nreturn [{\n  json: {\n    chatId: original.chatId,\n    callbackQueryId: original.callbackQueryId,\n    messageId: original.messageId,\n    text: `✅ Approved. <b>${original.currentBusinessName}</b> updated.`\n  }\n}];"
+        "jsCode": "const original = $('Check Staleness').item.json;\nconst j = $json;\nif (!j || !j.id) {\n  return [{\n    json: {\n      chatId: original.chatId,\n      callbackQueryId: original.callbackQueryId,\n      messageId: original.messageId,\n      text: `\\u26a0\\ufe0f Record was modified concurrently. Approval rejected.`\n    }\n  }];\n}\nreturn [{\n  json: {\n    chatId: original.chatId,\n    callbackQueryId: original.callbackQueryId,\n    messageId: original.messageId,\n    text: `✅ Approved. <b>${original.currentBusinessName}</b> updated.`\n  }\n}];"
       },
       "id": "93b47b98-0a6f-43ed-ae17-e746b58f90c9",
       "name": "Build Approve Message",
@@ -294,7 +295,7 @@
       "webhookId": "fd9d3150-ac90-48b2-b3fe-fb424fa03b66",
       "credentials": {
         "telegramApi": {
-          "id": "ANhhemYmmRjIkSZo",
+          "id": "REPLACE_ME",
           "name": "Telegram account"
         }
       }
@@ -302,9 +303,9 @@
     {
       "parameters": {
         "operation": "editMessageText",
-        "chatId": "={{ $('Merge Approval Outcome').item.json.chatId }}",
-        "messageId": "={{ $('Merge Approval Outcome').item.json.messageId }}",
-        "text": "={{ $('Merge Approval Outcome').item.json.text }}",
+        "chatId": "={{ $json.chatId || ($('Merge Approval Outcome').item ? $('Merge Approval Outcome').item.json.chatId : null) || ($('Build Stale Message').item ? $('Build Stale Message').item.json.chatId : null) }}",
+        "messageId": "={{ $json.messageId || ($('Merge Approval Outcome').item ? $('Merge Approval Outcome').item.json.messageId : null) || ($('Build Stale Message').item ? $('Build Stale Message').item.json.messageId : null) }}",
+        "text": "={{ $json.text || ($('Merge Approval Outcome').item ? $('Merge Approval Outcome').item.json.text : null) || ($('Build Stale Message').item ? $('Build Stale Message').item.json.text : null) }}",
         "additionalFields": {
           "parse_mode": "HTML"
         }
@@ -320,31 +321,7 @@
       "webhookId": "d1f8c788-0510-41eb-8761-923ffb9ae178",
       "credentials": {
         "telegramApi": {
-          "id": "ANhhemYmmRjIkSZo",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "editMessageText",
-        "chatId": "={{ $('Merge Approval Outcome').item.json.chatId }}",
-        "messageId": "={{ $('Merge Approval Outcome').item.json.messageId }}",
-        "text": "={{ $('Merge Approval Outcome').item.json.text }}",
-        "additionalFields": {}
-      },
-      "id": "145639dd-c45e-45a1-b750-42e7e7164ee9",
-      "name": "Clear Approval Buttons",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        2224,
-        288
-      ],
-      "webhookId": "321529fc-6dc9-47f1-8c28-96180967ff13",
-      "credentials": {
-        "telegramApi": {
-          "id": "ANhhemYmmRjIkSZo",
+          "id": "REPLACE_ME",
           "name": "Telegram account"
         }
       }
@@ -461,6 +438,17 @@
         ]
       ]
     },
+    "Build Stale Message": {
+      "main": [
+        [
+          {
+            "node": "Answer Callback Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Build Reject Message": {
       "main": [
         [
@@ -510,17 +498,6 @@
         [
           {
             "node": "Edit Approval Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Edit Approval Message": {
-      "main": [
-        [
-          {
-            "node": "Clear Approval Buttons",
             "type": "main",
             "index": 0
           }

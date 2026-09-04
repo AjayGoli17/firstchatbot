@@ -41,6 +41,7 @@ class DatabaseAdapter {
         due_at              TEXT NOT NULL,
         attempt_number      INTEGER NOT NULL DEFAULT 1,
         status              TEXT NOT NULL DEFAULT 'PENDING',
+        last_notified_at    TEXT,
         calendar_event_id   TEXT,
         created_at          TEXT NOT NULL DEFAULT (datetime('now')),
         completed_at        TEXT
@@ -56,11 +57,13 @@ class DatabaseAdapter {
       );
 
       CREATE TABLE IF NOT EXISTS pending_actions (
-        chat_id             TEXT PRIMARY KEY,
+        chat_id             TEXT NOT NULL,
+        user_id             TEXT NOT NULL DEFAULT '',
         command             TEXT NOT NULL,
         parameters          TEXT NOT NULL DEFAULT '{}',
         missing             TEXT NOT NULL DEFAULT '[]',
-        updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (chat_id, user_id)
       );
 
       CREATE TABLE IF NOT EXISTS error_log (
@@ -80,15 +83,16 @@ class DatabaseAdapter {
       );
 
       CREATE TABLE IF NOT EXISTS standalone_reminders (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id             TEXT NOT NULL,
-        chat_id             TEXT NOT NULL,
-        content             TEXT NOT NULL,
-        reminder_at         TEXT NOT NULL,
-        status              TEXT NOT NULL DEFAULT 'PENDING',
-        notified_at         TEXT,
-        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id                     TEXT NOT NULL,
+        chat_id                     TEXT NOT NULL,
+        content                     TEXT NOT NULL,
+        reminder_at                 TEXT NOT NULL,
+        status                      TEXT NOT NULL DEFAULT 'PENDING',
+        notified_at                 TEXT,
+        google_calendar_event_id    TEXT,
+        created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
       CREATE TABLE IF NOT EXISTS personal_daily_tasks (
@@ -97,6 +101,7 @@ class DatabaseAdapter {
         chat_id             TEXT NOT NULL,
         task_date           TEXT NOT NULL DEFAULT (date('now')),
         content             TEXT NOT NULL,
+        priority            TEXT NOT NULL DEFAULT 'MEDIUM',
         status              TEXT NOT NULL DEFAULT 'PENDING',
         notified_at         TEXT,
         created_at          TEXT NOT NULL DEFAULT (datetime('now')),
@@ -153,6 +158,37 @@ class DatabaseAdapter {
       );
     }
 
+    // 1b. Handle Atomic Claim Schedulers
+    if (sql.startsWith('WITH claim AS') && sql.includes('UPDATE follow_ups')) {
+      const dueRows = this.query(
+        "SELECT f.id, f.lead_id, f.attempt_number, l.business_name FROM follow_ups f JOIN leads l ON l.id = f.lead_id WHERE f.status = 'PENDING' AND datetime(f.due_at) <= datetime('now') AND (f.last_notified_at IS NULL OR datetime(f.last_notified_at) < datetime('now', '-12 hours')) ORDER BY datetime(f.due_at) ASC LIMIT 10"
+      );
+      if (dueRows.length === 0) return [];
+      const ids = dueRows.map(r => r.id);
+      this.query(`UPDATE follow_ups SET last_notified_at = datetime('now') WHERE id IN (${ids.join(',')})`);
+      return dueRows.map(r => ({ followup_id: r.id, lead_id: r.lead_id, attempt_number: r.attempt_number, business_name: r.business_name }));
+    }
+
+    if (sql.startsWith('WITH claim AS') && sql.includes('UPDATE standalone_reminders')) {
+      const dueRows = this.query(
+        "SELECT id, user_id, chat_id, content, reminder_at FROM standalone_reminders WHERE status = 'PENDING' AND (notified_at IS NULL OR datetime(notified_at) < datetime('now', '-1 hour')) AND datetime(reminder_at) <= datetime('now') ORDER BY datetime(reminder_at) ASC LIMIT 20"
+      );
+      if (dueRows.length === 0) return [];
+      const ids = dueRows.map(r => r.id);
+      this.query(`UPDATE standalone_reminders SET notified_at = datetime('now'), updated_at = datetime('now') WHERE id IN (${ids.join(',')})`);
+      return dueRows;
+    }
+
+    if (sql.startsWith('WITH claim AS') && sql.includes('UPDATE personal_daily_tasks')) {
+      const dueRows = this.query(
+        "SELECT id, user_id, chat_id, task_date, content, priority FROM personal_daily_tasks WHERE status = 'PENDING' AND notified_at IS NULL AND task_date = date('now') ORDER BY user_id, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END, id ASC"
+      );
+      if (dueRows.length === 0) return [];
+      const ids = dueRows.map(r => r.id);
+      this.query(`UPDATE personal_daily_tasks SET notified_at = datetime('now'), updated_at = datetime('now') WHERE id IN (${ids.join(',')})`);
+      return dueRows;
+    }
+
     // 2. Handle Upsert Followup in LEVEL_6 and LEVEL_5
     if (sql.includes('INSERT INTO follow_ups') && sql.includes('ON CONFLICT')) {
       const leadId = params[0];
@@ -172,22 +208,23 @@ class DatabaseAdapter {
     // 3. Syntax translations for SQLite compatibility
     // Date/interval transformations
     sql = sql.replace(/now\(\)\s*::\s*date/gi, "date('now')");
-    sql = sql.replace(/now\(\)\s*\+\s*interval\s*'3 days'/gi, "datetime('now', '+3 days')");
-    sql = sql.replace(/now\(\)\s*\+\s*interval\s*'12 hours'/gi, "datetime('now', '+12 hours')");
-    sql = sql.replace(/now\(\)\s*\+\s*interval\s*'1 day'/gi, "datetime('now', '+1 day')");
-    sql = sql.replace(/now\(\)\s*-\s*interval\s*'15 minutes'/gi, "datetime('now', '-15 minutes')");
+    sql = sql.replace(/now\(\)\s*([\+\-])\s*interval\s*'([^']+)'/gi, "datetime('now', '$1$2')");
     sql = sql.replace(/date_trunc\('month',\s*now\(\)\)/gi, "datetime('now', 'start of month')");
     sql = sql.replace(/now\(\)/gi, "datetime('now')");
 
-    // Replace PostgreSQL typecasts like ::date
+    // Replace PostgreSQL typecasts like ::date, ::timestamptz, etc.
     sql = sql.replace(/([a-zA-Z0-9_.]+)::date/gi, "date($1)");
+    sql = sql.replace(/::timestamptz/gi, '');
+    sql = sql.replace(/::timestamp/gi, '');
     sql = sql.replace(/::numeric/gi, '');
     sql = sql.replace(/::integer/gi, '');
     sql = sql.replace(/::text/gi, '');
 
     // Normalize date comparisons for SQLite (datetime(col) <= datetime(...))
+    sql = sql.replace(/([a-zA-Z0-9_.]*(?:due_at|reminder_at|task_date|next_follow_up_at|won_at|last_notified_at|occurred_at))\s*(<=|<|>=|>)\s*datetime\(/gi, "datetime($1) $2 datetime(");
     sql = sql.replace(/([a-zA-Z0-9_.]+)\.due_at\s*<=\s*datetime\('now'\)/gi, "datetime($1.due_at) <= datetime('now')");
     sql = sql.replace(/([a-zA-Z0-9_.]+)\.due_at\s*<\s*datetime\('now'\)/gi, "datetime($1.due_at) < datetime('now')");
+    sql = sql.replace(/([a-zA-Z0-9_.]+)\.last_notified_at\s*<\s*datetime\('now',\s*'-12 hours'\)/gi, "datetime($1.last_notified_at) < datetime('now', '-12 hours')");
     sql = sql.replace(/([a-zA-Z0-9_.]+)\.next_follow_up_at\s*<=\s*datetime\('now',\s*'\+1 day'\)/gi, "datetime($1.next_follow_up_at) <= datetime('now', '+1 day')");
     sql = sql.replace(/([a-zA-Z0-9_.]+)\.next_follow_up_at\s*<\s*datetime\('now'\)/gi, "datetime($1.next_follow_up_at) < datetime('now')");
     sql = sql.replace(/won_at\s*>=\s*datetime\('now',\s*'start of month'\)/gi, "datetime(won_at) >= datetime('now', 'start of month')");
@@ -251,13 +288,14 @@ class DatabaseAdapter {
 
   seedFollowUp(followup) {
     const rows = this.query(
-      `INSERT INTO follow_ups (lead_id, due_at, attempt_number, status, calendar_event_id)
-       VALUES (?, ?, ?, ?, ?) RETURNING *`,
+      `INSERT INTO follow_ups (lead_id, due_at, attempt_number, status, last_notified_at, calendar_event_id)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
       [
         followup.lead_id,
         followup.due_at || new Date().toISOString(),
         followup.attempt_number || 1,
         followup.status || 'PENDING',
+        followup.last_notified_at || null,
         followup.calendar_event_id || null
       ]
     );
@@ -280,16 +318,63 @@ class DatabaseAdapter {
 
   seedPendingAction(pending) {
     this.query(
-      `INSERT INTO pending_actions (chat_id, command, parameters, missing, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'))
-       ON CONFLICT (chat_id) DO UPDATE SET command = excluded.command, parameters = excluded.parameters, missing = excluded.missing, updated_at = datetime('now')`,
+      `INSERT INTO pending_actions (chat_id, user_id, command, parameters, missing, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT (chat_id, user_id) DO UPDATE SET command = excluded.command, parameters = excluded.parameters, missing = excluded.missing, updated_at = datetime('now')`,
       [
         String(pending.chat_id),
+        String(pending.user_id || ''),
         pending.command,
         JSON.stringify(pending.parameters || {}),
         JSON.stringify(pending.missing || [])
       ]
     );
+  }
+
+  seedDailyTask(task) {
+    const rows = this.query(
+      `INSERT INTO personal_daily_tasks (user_id, chat_id, task_date, content, priority, status, notified_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+      [
+        task.user_id || '987654321',
+        task.chat_id || '987654321',
+        task.task_date || new Date().toISOString().split('T')[0],
+        task.content || 'Test Task',
+        task.priority || 'MEDIUM',
+        task.status || 'PENDING',
+        task.notified_at || null
+      ]
+    );
+    return rows[0];
+  }
+
+  seedStandaloneReminder(rem) {
+    const rows = this.query(
+      `INSERT INTO standalone_reminders (user_id, chat_id, content, reminder_at, status, notified_at, google_calendar_event_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+      [
+        rem.user_id || '987654321',
+        rem.chat_id || '987654321',
+        rem.content || 'Test Reminder',
+        rem.reminder_at || new Date().toISOString(),
+        rem.status || 'PENDING',
+        rem.notified_at || null,
+        rem.google_calendar_event_id || null
+      ]
+    );
+    return rows[0];
+  }
+
+  seedStandaloneNote(note) {
+    const rows = this.query(
+      `INSERT INTO standalone_notes (user_id, content)
+       VALUES (?, ?) RETURNING *`,
+      [
+        note.user_id || '987654321',
+        note.content || 'Test Note'
+      ]
+    );
+    return rows[0];
   }
 }
 
